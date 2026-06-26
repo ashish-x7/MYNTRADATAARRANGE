@@ -92,6 +92,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setupSeparateFile();
     setupRenameFile();
     setupMergeFile();
+    setupMyntraError();
 });
 
 
@@ -3465,8 +3466,695 @@ async function runMergeProcess() {
         console.error(err);
         showToast("Error merging files: " + err.message, "error");
         mrgProgress.classList.add('hidden');
-        btnMergeRun.disabled = false;
+        if (btnMergeRun) btnMergeRun.disabled = false;
     }
 }
 
+      // ==========================================
+// MYNTRA ERROR TAB OPERATIONS
+// ==========================================
 
+let errDetailsFile = null;
+let errDataFile = null;
+let errGeneratedZipBlob = null;
+let errGeneratedZipName = "";
+
+function setupMyntraError() {
+    const detailsDropzone = document.getElementById('err-details-dropzone');
+    const detailsInput = document.getElementById('err-details-file-input');
+    const dataDropzone = document.getElementById('err-data-dropzone');
+    const dataInput = document.getElementById('err-data-file-input');
+    const btnErrorRun = document.getElementById('btn-error-run');
+
+    if (!detailsDropzone || !detailsInput || !dataDropzone || !dataInput) return;
+
+    // Details File Click
+    detailsDropzone.addEventListener('click', () => {
+        detailsInput.click();
+    });
+    detailsInput.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+            handleErrFile(e.target.files[0], 'details');
+        }
+    });
+
+    // Details File Drag & Drop
+    detailsDropzone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        detailsDropzone.classList.add('dragover');
+    });
+    detailsDropzone.addEventListener('dragleave', () => {
+        detailsDropzone.classList.remove('dragover');
+    });
+    detailsDropzone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        detailsDropzone.classList.remove('dragover');
+        if (e.dataTransfer.files.length > 0) {
+            handleErrFile(e.dataTransfer.files[0], 'details');
+        }
+    });
+
+    // Data File Click
+    dataDropzone.addEventListener('click', () => {
+        dataInput.click();
+    });
+    dataInput.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+            handleErrFile(e.target.files[0], 'data');
+        }
+    });
+
+    // Data File Drag & Drop
+    dataDropzone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dataDropzone.classList.add('dragover');
+    });
+    dataDropzone.addEventListener('dragleave', () => {
+        dataDropzone.classList.remove('dragover');
+    });
+    dataDropzone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dataDropzone.classList.remove('dragover');
+        if (e.dataTransfer.files.length > 0) {
+            handleErrFile(e.dataTransfer.files[0], 'data');
+        }
+    });
+
+    // Run / Download Action Trigger
+    if (btnErrorRun) {
+        btnErrorRun.addEventListener('click', () => {
+            if (errGeneratedZipBlob) {
+                // User-triggered download of already generated ZIP
+                const url = URL.createObjectURL(errGeneratedZipBlob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = errGeneratedZipName;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                setTimeout(() => URL.revokeObjectURL(url), 1000);
+                showToast("ZIP package downloaded successfully!", "success");
+            } else {
+                runErrorCheckProcess();
+            }
+        });
+    }
+}
+
+function resetErrorButtonState() {
+    errGeneratedZipBlob = null;
+    errGeneratedZipName = "";
+    const btnErrorRun = document.getElementById('btn-error-run');
+    if (btnErrorRun) {
+        btnErrorRun.innerHTML = `
+            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 5px;"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+            Process Myntra Errors
+        `;
+        btnErrorRun.style.background = ""; // Restore default styles
+        btnErrorRun.style.borderColor = "";
+    }
+}
+
+function handleErrFile(file, type) {
+    if (!file) return;
+
+    // Reset download state if new files are uploaded
+    resetErrorButtonState();
+
+    const ext = file.name.split('.').pop().toLowerCase();
+    if (ext !== 'xlsx' && ext !== 'xls' && ext !== 'csv') {
+        showToast("Please upload an Excel or CSV file.", "error");
+        return;
+    }
+
+    if (type === 'details') {
+        errDetailsFile = file;
+        const label = document.getElementById('err-details-label');
+        if (label) label.textContent = file.name;
+        const tag = document.getElementById('err-details-tag');
+        if (tag) {
+            tag.textContent = "Loaded";
+            tag.style.background = "rgba(16, 185, 129, 0.1)";
+            tag.style.color = "#10b981";
+        }
+    } else if (type === 'data') {
+        errDataFile = file;
+        const label = document.getElementById('err-data-label');
+        if (label) label.textContent = file.name;
+        const tag = document.getElementById('err-data-tag');
+        if (tag) {
+            tag.textContent = "Loaded";
+            tag.style.background = "rgba(16, 185, 129, 0.1)";
+            tag.style.color = "#10b981";
+        }
+    }
+
+    renderErrorPreview();
+    showToast(`${file.name} uploaded successfully!`, "success");
+}
+
+function renderErrorPreview() {
+    const errFileCount = document.getElementById('err-file-count');
+    const errPreviewTbody = document.getElementById('err-preview-tbody');
+    const errEmptyState = document.getElementById('err-empty-state');
+    const errTableContainer = document.getElementById('err-table-container');
+    const btnErrorRun = document.getElementById('btn-error-run');
+
+    let filesCount = 0;
+    if (errDetailsFile) filesCount++;
+    if (errDataFile) filesCount++;
+
+    if (errFileCount) {
+        errFileCount.textContent = `${filesCount} files loaded`;
+    }
+
+    if (errPreviewTbody) {
+        errPreviewTbody.innerHTML = '';
+    }
+
+    if (filesCount === 0) {
+        if (errEmptyState) errEmptyState.classList.remove('hidden');
+        if (errTableContainer) errTableContainer.classList.add('hidden');
+        if (btnErrorRun) btnErrorRun.classList.add('hidden');
+        return;
+    }
+
+    if (errEmptyState) errEmptyState.classList.add('hidden');
+    if (errTableContainer) errTableContainer.classList.remove('hidden');
+
+    if (filesCount === 2) {
+        if (btnErrorRun) btnErrorRun.classList.remove('hidden');
+    } else {
+        if (btnErrorRun) btnErrorRun.classList.add('hidden');
+    }
+
+    const filesToRender = [];
+    if (errDetailsFile) filesToRender.push({ type: 'Myntra Details', file: errDetailsFile });
+    if (errDataFile) filesToRender.push({ type: 'Myntra Data', file: errDataFile });
+
+    filesToRender.forEach((item, idx) => {
+        const tr = document.createElement('tr');
+        tr.className = `row-color-${idx % 7}`;
+        
+        tr.innerHTML = `
+            <td><strong>${idx + 1}</strong></td>
+            <td><span class="file-name" title="${item.file.name}">${item.file.name} (${item.type})</span></td>
+            <td><span style="color: var(--text-secondary); font-weight: 500;">—</span></td>
+            <td><span class="badge badge-unmatched">Ready to check</span></td>
+        `;
+        if (errPreviewTbody) {
+            errPreviewTbody.appendChild(tr);
+        }
+    });
+}
+
+async function runErrorCheckProcess() {
+    if (!errDetailsFile || !errDataFile) {
+        showToast("Please upload both Details and Data files first.", "error");
+        return;
+      }
+
+    const errProgress = document.getElementById('err-progress');
+    const errProgressPercent = document.getElementById('err-progress-percent');
+    const errProgressText = document.getElementById('err-progress-text');
+    const errProgressFill = document.getElementById('err-progress-fill');
+    const btnErrorRun = document.getElementById('btn-error-run');
+
+    if (btnErrorRun) btnErrorRun.disabled = true;
+    if (errProgress) errProgress.classList.remove('hidden');
+
+    const updateErrProgress = (percent, text) => {
+        if (errProgressPercent) errProgressPercent.textContent = `${Math.round(percent)}%`;
+        if (errProgressFill) errProgressFill.style.width = `${percent}%`;
+        if (text && errProgressText) errProgressText.textContent = text;
+    };
+
+    try {
+        // Retrieve date filters from UI
+        const fromDateStr = document.getElementById('err-from-date').value;
+        const toDateStr = document.getElementById('err-to-date').value;
+
+        const fromDate = fromDateStr ? new Date(fromDateStr) : null;
+        const toDate = toDateStr ? new Date(toDateStr) : null;
+
+        if (fromDate) fromDate.setHours(0, 0, 0, 0);
+        if (toDate) toDate.setHours(23, 59, 59, 999);
+
+        updateErrProgress(10, "Reading Myntra Details file...");
+        await new Promise(r => setTimeout(r, 150));
+        const detailsAOA = await readExcelAsAOA(errDetailsFile);
+
+        updateErrProgress(20, "Reading Myntra Data file...");
+        await new Promise(r => setTimeout(r, 150));
+        const dataAOA = await readExcelAsAOA(errDataFile);
+
+        if (detailsAOA.length === 0) {
+            throw new Error("Details file is empty.");
+        }
+        if (dataAOA.length === 0) {
+            throw new Error("Data file is empty.");
+        }
+
+        // Determine correct header row for Details
+        let headerRowIndex = 0;
+        if (detailsAOA[1] && String(detailsAOA[1][1]).toLowerCase().includes("invoice")) {
+            headerRowIndex = 1;
+        }
+        const headerDetails = detailsAOA[headerRowIndex];
+
+        updateErrProgress(30, "Filtering rows in Details (Column V)...");
+        await new Promise(r => setTimeout(r, 200));
+
+        // Details AOA check: Column V (index 21). Delete row if value is "0" or "Price Dispute : 0".
+        const filteredDetailsRows = [];
+        let deletedRowCount = 0;
+        for (let i = headerRowIndex + 1; i < detailsAOA.length; i++) {
+            const row = detailsAOA[i];
+            const valV = row[21] !== undefined ? String(row[21]).trim() : "";
+            if (valV === "0" || valV === "Price Dispute : 0") {
+                deletedRowCount++;
+            } else {
+                filteredDetailsRows.push(row);
+            }
+        }
+
+        updateErrProgress(45, "Creating mapping index from Data (Column E -> Column C)...");
+        await new Promise(r => setTimeout(r, 200));
+
+        // Data AOA: Map Column E (index 4) -> Column C (index 2)
+        const dataMap = new Map();
+        for (let j = 1; j < dataAOA.length; j++) {
+            const row = dataAOA[j];
+            const keyE = row[4] !== undefined ? cleanKey(row[4]) : "";
+            if (keyE) {
+                const valC = row[2] !== undefined ? row[2] : "";
+                dataMap.set(keyE, valC);
+            }
+        }
+
+        updateErrProgress(60, "Mapping matching values & checking date filters...");
+        await new Promise(r => setTimeout(r, 250));
+
+        // Details AOA: Map Column B (index 1) -> Column W (index 22) and check Date Range
+        let mappedCount = 0;
+        let dateFilteredCount = 0;
+        const survivingRows = [];
+
+        for (let i = 0; i < filteredDetailsRows.length; i++) {
+            const row = filteredDetailsRows[i];
+            const keyB = row[1] !== undefined ? cleanKey(row[1]) : "";
+            
+            while (row.length < 23) {
+                row.push("");
+            }
+            
+            let cellValC = "";
+            if (keyB && dataMap.has(keyB)) {
+                cellValC = dataMap.get(keyB);
+                mappedCount++;
+            }
+            row[22] = cellValC;
+
+            // Date filter check
+            if (fromDate || toDate) {
+                const cellDate = parseCellAsDate(cellValC);
+                if (cellDate) {
+                    let inRange = true;
+                    if (fromDate && cellDate < fromDate) inRange = false;
+                    if (toDate && cellDate > toDate) inRange = false;
+
+                    if (inRange) {
+                        dateFilteredCount++;
+                        continue; // delete/skip row
+                    }
+                }
+            }
+
+            survivingRows.push(row);
+        }
+
+        updateErrProgress(70, "Grouping error rows by Warehouse Name (Column D)...");
+        await new Promise(r => setTimeout(r, 200));
+
+        // Group survivingRows by Column D (index 3)
+        const partyGroups = new Map();
+        survivingRows.forEach(row => {
+            const partyKey = String(row[3] || "").trim();
+            if (partyKey) {
+                if (!partyGroups.has(partyKey)) {
+                    partyGroups.set(partyKey, []);
+                }
+                partyGroups.get(partyKey).push(row);
+            }
+        });
+
+        // Initialize ZIP and Master Workbook
+        const zip = new JSZip();
+        const masterWb = XLSX.utils.book_new();
+        const partyKeysSorted = Array.from(partyGroups.keys()).sort();
+
+        updateErrProgress(80, "Calculating correct prices & compiling sheets...");
+        await new Promise(r => setTimeout(r, 250));
+
+        partyKeysSorted.forEach(partyKey => {
+            const rowsInGroup = partyGroups.get(partyKey);
+
+            // Row 1 (index 0): Merged A1:L1 title block
+            const titleRow = [`${partyKey}-account center`, "", "", "", "", "", "", "", "", "", "", ""];
+
+            // Row 2 (index 1): Column Headers matching screenshot exactly
+            const colAHeader = "Invoice No";
+            const colBHeader = "Invoice Date";
+            const colCHeader = "Warehouse Name";
+            const colDHeader = "Order ID";
+            const colEHeader = "Item Asin";
+            const colFHeader = "Item SKU";
+            const colGHeader = "Quantity";
+            const colHHeader = "Item Cost";
+            const colIHeader = "Reason";
+            const colJHeader = "Order Date";
+            const colKHeader = "Calculated Price";
+            const colLHeader = "Remarks";
+
+            const groupHeaders = [
+                colAHeader, colBHeader, colCHeader, colDHeader, colEHeader, colFHeader,
+                colGHeader, colHHeader, colIHeader, colJHeader, colKHeader, colLHeader
+            ];
+
+            const sheetAOA = [titleRow, groupHeaders];
+
+            rowsInGroup.forEach(row => {
+                const valH = parseFloat(row[12]) || 0; // Details Column M (Item Cost)
+                const valG = parseInt(row[11], 10) || 0; // Details Column L (Quantity)
+                const disputeVal = parseDisputeAmount(row[21]); // Details Column V
+                
+                // Formula: valK = valH - disputeVal
+                const valK = parseFloat((valH - disputeVal).toFixed(2));
+                const valL = "this amount not coorect as account central price this is approx price that currently live in account central";
+
+                const dataRow = [
+                    row[1] || "",      // Details B (Invoice No)
+                    row[2] || "",      // Details C (Invoice Date)
+                    row[3] || "",      // Details D (Warehouse Name)
+                    row[6] || "",      // Details G (Order ID)
+                    row[7] || "",      // Details H (Item Asin)
+                    row[8] || "",      // Details I (Item SKU)
+                    valG,              // Details L (Quantity as number)
+                    valH,              // Details M (Item Cost as number)
+                    row[21] || "",     // Details V (Reason)
+                    row[22] || "",     // Details W (Lookup Date)
+                    valK,              // Calculated Price (number)
+                    valL               // Remarks
+                ];
+                sheetAOA.push(dataRow);
+            });
+
+            // Convert to sheet and merge A1:L1
+            const wsGroup = XLSX.utils.aoa_to_sheet(sheetAOA);
+            wsGroup['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 11 } }];
+
+            // Apply style objects, gridlines, auto-fit, decimals
+            applyWorksheetFormatting(wsGroup, sheetAOA, true);
+
+            // Sheet name max length 31 chars in Excel
+            const sheetName = `${partyKey}-account center`.substring(0, 31);
+
+            // 1. Create individual workbook
+            const wbGroup = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wbGroup, wsGroup, sheetName);
+            const bufferGroup = XLSX.write(wbGroup, { bookType: 'xlsx', type: 'array' });
+            const blobGroup = new Blob([bufferGroup], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            zip.file(`${partyKey}-account center.xlsx`, blobGroup);
+
+            // 2. Add to combined master workbook
+            XLSX.utils.book_append_sheet(masterWb, wsGroup, sheetName);
+        });
+
+        // Add master workbook to ZIP if there are sheets
+        if (partyKeysSorted.length > 0) {
+            // Apply formatting to master sheets as well (already styled above because we reuse wsGroup)
+            const masterBuffer = XLSX.write(masterWb, { bookType: 'xlsx', type: 'array' });
+            const masterBlob = new Blob([masterBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            zip.file("myntra price dispute.xlsx", masterBlob);
+        }
+
+        // 3. Create cleaned main details workbook (V & Date filtered, Column W removed)
+        updateErrProgress(90, "Creating cleaned Details sheet...");
+        await new Promise(r => setTimeout(r, 150));
+
+        const detailsHeader = [...headerDetails];
+        const detailsWithoutW = [detailsHeader.slice(0, 22)]; // Slice index 0 to 21 (length 22)
+        survivingRows.forEach(row => {
+            detailsWithoutW.push(row.slice(0, 22));
+        });
+
+        const wbDetails = XLSX.utils.book_new();
+        const wsDetails = XLSX.utils.aoa_to_sheet(detailsWithoutW);
+        
+        // Format Details worksheet
+        applyWorksheetFormatting(wsDetails, detailsWithoutW, false);
+
+        XLSX.utils.book_append_sheet(wbDetails, wsDetails, "Processed_Details");
+        const detailsBuffer = XLSX.write(wbDetails, { bookType: 'xlsx', type: 'array' });
+        const detailsBlob = new Blob([detailsBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        zip.file("Processed_Details.xlsx", detailsBlob);
+
+        // Package ZIP
+        updateErrProgress(95, "Compiling final ZIP archive...");
+        await new Promise(r => setTimeout(r, 150));
+
+        const zipBlob = await zip.generateAsync({ type: "blob" });
+        const timestamp = new Date().toISOString().slice(0,10);
+        
+        // Save in state variables
+        errGeneratedZipBlob = zipBlob;
+        errGeneratedZipName = `Myntra_Error_Dispute_Package_${timestamp}.zip`;
+
+        updateErrProgress(100, "Success!");
+        showToast(`ZIP created! Ready to download with ${partyKeysSorted.length} party files.`, "success");
+
+        // Change button to download state
+        if (btnErrorRun) {
+            btnErrorRun.innerHTML = `
+                <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 5px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                Download Dispute ZIP
+            `;
+            btnErrorRun.style.background = "var(--color-od)"; // Purple/Indigo Glow
+            btnErrorRun.style.borderColor = "var(--color-od)";
+            btnErrorRun.disabled = false;
+        }
+
+        // Update UI preview table with file count results
+        const errPreviewTbody = document.getElementById('err-preview-tbody');
+        if (errPreviewTbody) {
+            let rowHTML = `
+                <tr class="row-color-0">
+                    <td><strong>1</strong></td>
+                    <td><span class="file-name" title="Processed_Details.xlsx">Processed_Details.xlsx (Cleaned Details)</span></td>
+                    <td><span style="color: #ef4444; font-weight: bold;">${deletedRowCount + dateFilteredCount}</span></td>
+                    <td><span class="badge" style="background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.2);">${deletedRowCount} (Col V) + ${dateFilteredCount} (Date Range) rows deleted</span></td>
+                </tr>
+                <tr class="row-color-1">
+                    <td><strong>2</strong></td>
+                    <td><span class="file-name" title="myntra price dispute.xlsx">myntra price dispute.xlsx (Master Merged)</span></td>
+                    <td><span style="color: #10b981; font-weight: bold;">${partyKeysSorted.length}</span></td>
+                    <td><span class="badge" style="background: rgba(16, 185, 129, 0.1); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.2);">${partyKeysSorted.length} sheets combined</span></td>
+                </tr>
+            `;
+            partyKeysSorted.forEach((partyKey, index) => {
+                const count = partyGroups.get(partyKey).length;
+                rowHTML += `
+                    <tr class="row-color-${(index + 2) % 7}">
+                        <td><strong>${index + 3}</strong></td>
+                        <td><span class="file-name" title="${partyKey}-account center.xlsx">${partyKey}-account center.xlsx</span></td>
+                        <td><span style="color: var(--primary); font-weight: bold;">${count}</span></td>
+                        <td><span class="badge badge-od">${count} rows processed</span></td>
+                    </tr>
+                `;
+            });
+            errPreviewTbody.innerHTML = rowHTML;
+        }
+
+    } catch (err) {
+        console.error(err);
+        showToast("Error processing files: " + err.message, "error");
+        updateErrProgress(100, "Error!");
+        if (btnErrorRun) btnErrorRun.disabled = false;
+    } finally {
+        setTimeout(() => {
+            if (errProgress) errProgress.classList.add('hidden');
+        }, 1200);
+    }
+}
+
+// Applies column auto-fit, gridlines, number formats, and custom header cell styling properties
+function applyWorksheetFormatting(ws, sheetAOA, isGroupSheet) {
+    if (!ws || !sheetAOA || sheetAOA.length === 0) return;
+    
+    // 1. Force gridlines visibility
+    ws['!views'] = [{ showGridLines: true }];
+
+    // 2. Set Column Widths (Auto-fit with minimum padding)
+    const colWidths = sheetAOA[0].map((_, colIndex) => {
+        let maxLen = 10; // min width
+        sheetAOA.forEach((row, rowIndex) => {
+            // Skip Row 1 of group sheet since it is a merged title block
+            if (isGroupSheet && rowIndex === 0) return;
+            const val = row[colIndex];
+            if (val !== undefined && val !== null && val !== "") {
+                const str = String(val);
+                if (str.length > maxLen) maxLen = str.length;
+            }
+        });
+        return { wch: Math.min(maxLen + 3, 45) }; // cap column width at 45 chars max
+    });
+    ws['!cols'] = colWidths;
+
+    // 3. Set Row Heights
+    const rowHeights = [];
+    if (isGroupSheet) {
+        rowHeights.push({ hpt: 28 }); // Row 1: Merged Title (28pt)
+        rowHeights.push({ hpt: 24 }); // Row 2: Headers (24pt)
+        for (let r = 2; r < sheetAOA.length; r++) {
+            rowHeights.push({ hpt: 20 }); // Data rows (20pt)
+        }
+    } else {
+        rowHeights.push({ hpt: 24 }); // Details header (24pt)
+        for (let r = 1; r < sheetAOA.length; r++) {
+            rowHeights.push({ hpt: 20 }); // Details data rows (20pt)
+        }
+    }
+    ws['!rows'] = rowHeights;
+
+    // Alignments for party sheets
+    const colAlignments = [
+        "left",   // A: Invoice No
+        "center", // B: Invoice Date
+        "left",   // C: Warehouse Name
+        "center", // D: Order ID
+        "center", // E: Item Asin
+        "left",   // F: Item SKU
+        "center", // G: Quantity
+        "right",  // H: Item Cost
+        "left",   // I: Reason
+        "center", // J: Order Date
+        "right",  // K: Calculated Price
+        "left"    // L: Remarks
+    ];
+
+    // 4. Format cells and set styling properties
+    for (const cellKey in ws) {
+        if (cellKey[0] === '!') continue;
+        const cell = ws[cellKey];
+        
+        // Basic border styles
+        const borderStyle = {
+            top: { style: "thin", color: { rgb: "D1D5DB" } },
+            bottom: { style: "thin", color: { rgb: "D1D5DB" } },
+            left: { style: "thin", color: { rgb: "D1D5DB" } },
+            right: { style: "thin", color: { rgb: "D1D5DB" } }
+        };
+
+        // Initialize cell style object
+        cell.s = { border: borderStyle };
+
+        // Parse coordinate to check headers
+        const match = cellKey.match(/^([A-Z]+)(\d+)$/);
+        if (match) {
+            const col = match[1];
+            const rowNum = parseInt(match[2], 10);
+            const colIndex = XLSX.utils.decode_col(col);
+
+            if (isGroupSheet) {
+                if (rowNum === 1) {
+                    // Row 1 (Merged Title): White background, black bold centered text, size 12
+                    cell.s.fill = { fgColor: { rgb: "FFFFFF" } };
+                    cell.s.font = { name: "Arial", sz: 12, bold: true, color: { rgb: "000000" } };
+                    cell.s.alignment = { horizontal: "center", vertical: "center" };
+                } else if (rowNum === 2) {
+                    // Row 2 (Headers): Dark Blue background (#2F5597), white bold centered text, size 10
+                    cell.s.fill = { fgColor: { rgb: "2F5597" } };
+                    cell.s.font = { name: "Arial", sz: 10, bold: true, color: { rgb: "FFFFFF" } };
+                    cell.s.alignment = { horizontal: "center", vertical: "center" };
+                } else {
+                    // Data rows: Arial 10pt with appropriate column alignments
+                    cell.s.font = { name: "Arial", sz: 10, color: { rgb: "000000" } };
+                    cell.s.alignment = { horizontal: colAlignments[colIndex] || "left", vertical: "center" };
+                    
+                    // Format numeric values
+                    if (cell.v !== undefined && typeof cell.v === 'number') {
+                        cell.z = '0.00';
+                    }
+                }
+            } else {
+                // Details sheet
+                if (rowNum === 1) {
+                    // Row 1 (Headers): Dark Blue background (#2F5597), white bold text, size 10
+                    cell.s.fill = { fgColor: { rgb: "2F5597" } };
+                    cell.s.font = { name: "Arial", sz: 10, bold: true, color: { rgb: "FFFFFF" } };
+                    cell.s.alignment = { horizontal: "left", vertical: "center" };
+                } else {
+                    // Data rows: Arial 10pt
+                    cell.s.font = { name: "Arial", sz: 10, color: { rgb: "000000" } };
+                    cell.s.alignment = { horizontal: "left", vertical: "center" };
+                    
+                    // Format numeric values
+                    if (cell.v !== undefined && typeof cell.v === 'number') {
+                        cell.z = '0.00';
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Parse dispute amount from Column V ("Price Dispute : X")
+function parseDisputeAmount(val) {
+    if (val === undefined || val === null) return 0;
+    const str = String(val).trim();
+    const match = str.match(/Price Dispute\s*:\s*(-?\d+(\.\d+)?)/i);
+    if (match) {
+        return parseFloat(match[1]);
+    }
+    const numMatch = str.match(/-?\d+(\.\d+)?/);
+    if (numMatch) {
+        return parseFloat(numMatch[0]);
+    }
+    return 0;
+}
+
+// Parse excel cell or string value to Date object robustly
+function parseCellAsDate(val) {
+    if (val === undefined || val === null || val === "") return null;
+    if (val instanceof Date) return val;
+    
+    // Excel Serial Number
+    if (!isNaN(Number(val)) && Number(val) > 20000) {
+        return new Date((Number(val) - 25569) * 86400000);
+    }
+    
+    const str = String(val).trim();
+    if (!str) return null;
+
+    // DD-MM-YYYY or YYYY-MM-DD Check
+    const parts = str.split(' ')[0].split(/[-/]/);
+    if (parts.length === 3) {
+        let day, month, year;
+        if (parts[0].length === 4) {
+            // YYYY-MM-DD
+            year = parseInt(parts[0], 10);
+            month = parseInt(parts[1], 10) - 1;
+            day = parseInt(parts[2], 10);
+        } else {
+            // DD-MM-YYYY
+            day = parseInt(parts[0], 10);
+            month = parseInt(parts[1], 10) - 1;
+            year = parseInt(parts[2], 10);
+        }
+        const d = new Date(year, month, day);
+        if (!isNaN(d.getTime())) return d;
+    }
+
+    const d = new Date(str);
+    return isNaN(d.getTime()) ? null : d;
+}
