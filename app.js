@@ -7,6 +7,16 @@ const appsScriptUrl = "https://script.google.com/macros/s/AKfycbwFfXErcIfmCvx8gE
 let editingPartyCode = null;
 let uploadedZipBaseName = ""; // Tracks the original uploaded ZIP file name for download naming
 
+// Folder Create state variables
+let fldUploadedFiles = [];
+let fldGeneratedZipBlob = null;
+let fldGeneratedZipName = "";
+
+// Invoice Error state variables
+let invUploadedFiles = [];
+let invGeneratedZipBlob = null;
+let invGeneratedZipName = "";
+
 // DOM Elements
 const dropzone = document.getElementById('dropzone');
 const fileInput = document.getElementById('file-input');
@@ -93,6 +103,8 @@ document.addEventListener('DOMContentLoaded', () => {
     setupRenameFile();
     setupMergeFile();
     setupMyntraError();
+    setupFolderCreate();
+    setupInvoiceError();
 });
 
 
@@ -3898,26 +3910,21 @@ async function runErrorCheckProcess() {
             zip.file("myntra price dispute.xlsx", masterBlob);
         }
 
-        // 3. Create cleaned main details workbook (V & Date filtered, Column W removed)
-        updateErrProgress(90, "Creating cleaned Details sheet...");
-        await new Promise(r => setTimeout(r, 150));
-
-        const detailsHeader = [...headerDetails];
-        const detailsWithoutW = [detailsHeader.slice(0, 22)]; // Slice index 0 to 21 (length 22)
-        survivingRows.forEach(row => {
-            detailsWithoutW.push(row.slice(0, 22));
-        });
+        // Keep all original columns (no slicing of column W) and place header at Row 1, data at Row 2 onwards
+        const detailsCleaned = [headerDetails, ...survivingRows];
 
         const wbDetails = XLSX.utils.book_new();
-        const wsDetails = XLSX.utils.aoa_to_sheet(detailsWithoutW);
+        const wsDetails = XLSX.utils.aoa_to_sheet(detailsCleaned);
         
         // Format Details worksheet
-        applyWorksheetFormatting(wsDetails, detailsWithoutW, false);
+        applyWorksheetFormatting(wsDetails, detailsCleaned, false);
 
         XLSX.utils.book_append_sheet(wbDetails, wsDetails, "Processed_Details");
         const detailsBuffer = XLSX.write(wbDetails, { bookType: 'xlsx', type: 'array' });
         const detailsBlob = new Blob([detailsBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-        zip.file("Processed_Details.xlsx", detailsBlob);
+        
+        // Save using the original uploaded file's name
+        zip.file(errDetailsFile.name, detailsBlob);
 
         // Package ZIP
         updateErrProgress(95, "Compiling final ZIP archive...");
@@ -3950,7 +3957,7 @@ async function runErrorCheckProcess() {
             let rowHTML = `
                 <tr class="row-color-0">
                     <td><strong>1</strong></td>
-                    <td><span class="file-name" title="Processed_Details.xlsx">Processed_Details.xlsx (Cleaned Details)</span></td>
+                    <td><span class="file-name" title="${errDetailsFile.name}">${errDetailsFile.name} (Cleaned Details)</span></td>
                     <td><span style="color: #ef4444; font-weight: bold;">${deletedRowCount + dateFilteredCount}</span></td>
                     <td><span class="badge" style="background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.2);">${deletedRowCount} (Col V) + ${dateFilteredCount} (Date Range) rows deleted</span></td>
                 </tr>
@@ -4082,9 +4089,6 @@ function applyWorksheetFormatting(ws, sheetAOA, isGroupSheet) {
                     cell.s.alignment = { horizontal: colAlignments[colIndex] || "left", vertical: "center" };
                     
                     // Format numeric values
-                    if (cell.v !== undefined && typeof cell.v === 'number') {
-                        cell.z = '0.00';
-                    }
                 }
             } else {
                 // Details sheet
@@ -4099,9 +4103,6 @@ function applyWorksheetFormatting(ws, sheetAOA, isGroupSheet) {
                     cell.s.alignment = { horizontal: "left", vertical: "center" };
                     
                     // Format numeric values
-                    if (cell.v !== undefined && typeof cell.v === 'number') {
-                        cell.z = '0.00';
-                    }
                 }
             }
         }
@@ -4157,4 +4158,946 @@ function parseCellAsDate(val) {
 
     const d = new Date(str);
     return isNaN(d.getTime()) ? null : d;
+}
+
+// ==========================
+// FOLDER CREATE TAB LOGIC
+// ==========================
+
+function setupFolderCreate() {
+    const fldDropzone = document.getElementById('fld-dropzone');
+    const fldFileInput = document.getElementById('fld-file-input');
+    const btnFldSelectFiles = document.getElementById('btn-fld-select-files');
+    const btnFldRun = document.getElementById('btn-fld-run');
+    
+    if (!fldDropzone || !fldFileInput || !btnFldRun) return;
+    
+    // Select Files click trigger
+    if (btnFldSelectFiles) {
+        btnFldSelectFiles.addEventListener('click', (e) => {
+            e.stopPropagation();
+            fldFileInput.click();
+        });
+    }
+    
+    fldDropzone.addEventListener('click', () => {
+        fldFileInput.click();
+    });
+    
+    fldFileInput.addEventListener('change', (e) => {
+        handleFldFileSelection(e.target.files);
+    });
+    
+    // Drag & Drop
+    fldDropzone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        fldDropzone.classList.add('dragover');
+    });
+    
+    fldDropzone.addEventListener('dragleave', () => {
+        fldDropzone.classList.remove('dragover');
+    });
+    
+    fldDropzone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        fldDropzone.classList.remove('dragover');
+        if (e.dataTransfer.files.length > 0) {
+            handleFldFileSelection(e.dataTransfer.files);
+        }
+    });
+    
+    // Run process
+    btnFldRun.addEventListener('click', runFolderCreateProcess);
+}
+
+function resetFolderCreateButtonState() {
+    fldGeneratedZipBlob = null;
+    fldGeneratedZipName = "";
+    
+    const btnFldRun = document.getElementById('btn-fld-run');
+    if (btnFldRun) {
+        btnFldRun.innerHTML = `
+            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 5px;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+            Create Folders & Zip
+        `;
+        btnFldRun.style.background = ""; // Restore default style
+        btnFldRun.style.borderColor = "";
+        btnFldRun.disabled = false;
+    }
+    
+    const fldFileLabel = document.getElementById('fld-file-label');
+    if (fldFileLabel) {
+        fldFileLabel.textContent = "Drag & Drop files here";
+    }
+}
+
+async function handleFldFileSelection(files) {
+    resetFolderCreateButtonState();
+    if (!files || files.length === 0) return;
+    
+    const fldProgress = document.getElementById('fld-progress');
+    const fldProgressPercent = document.getElementById('fld-progress-percent');
+    const fldProgressText = document.getElementById('fld-progress-text');
+    const fldProgressFill = document.getElementById('fld-progress-fill');
+    const fldEmptyState = document.getElementById('fld-empty-state');
+    const fldTableContainer = document.getElementById('fld-table-container');
+    const fldPreviewTbody = document.getElementById('fld-preview-tbody');
+    const fldFileCount = document.getElementById('fld-file-count');
+    const btnFldRun = document.getElementById('btn-fld-run');
+    const fldFileLabel = document.getElementById('fld-file-label');
+    
+    fldProgress.classList.remove('hidden');
+    const updateFldProgress = (percent, text) => {
+        fldProgressPercent.textContent = `${Math.round(percent)}%`;
+        fldProgressFill.style.width = `${percent}%`;
+        if (text) fldProgressText.textContent = text;
+    };
+    
+    updateFldProgress(5, "Reading uploaded files...");
+    fldUploadedFiles = [];
+    
+    try {
+        const flatFilesList = [];
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+            const ext = file.name.split('.').pop().toLowerCase();
+            
+            if (ext === 'zip') {
+                updateFldProgress(10 + Math.round((i / files.length) * 40), `Extracting ZIP: ${file.name}...`);
+                const extracted = await extractSpreadsheetsFromZip(file);
+                flatFilesList.push(...extracted);
+            } else if (ext === 'xlsx' || ext === 'xls' || ext === 'csv') {
+                flatFilesList.push({
+                    name: file.name,
+                    ext: ext,
+                    blob: file
+                });
+            }
+        }
+        
+        if (flatFilesList.length === 0) {
+            fldProgress.classList.add('hidden');
+            showToast("No valid Excel or CSV files found.", "error");
+            return;
+        }
+        
+        if (fldFileLabel) {
+            fldFileLabel.textContent = `${flatFilesList.length} files loaded`;
+        }
+        if (fldFileCount) {
+            fldFileCount.textContent = `${flatFilesList.length} files loaded`;
+        }
+        
+        // Group files by prefix
+        const groups = new Map();
+        flatFilesList.forEach(fileData => {
+            const name = fileData.name;
+            if (name.includes("-")) {
+                const prefix = name.split("-")[0].trim();
+                if (prefix !== "") {
+                    if (!groups.has(prefix)) {
+                        groups.set(prefix, []);
+                    }
+                    groups.get(prefix).push(fileData);
+                }
+            }
+        });
+        
+        // Save to fldUploadedFiles
+        flatFilesList.forEach(f => {
+            fldUploadedFiles.push({
+                name: f.name,
+                ext: f.ext,
+                fileObj: f.blob
+            });
+        });
+        
+        // Generate preview table rows HTML
+        let html = "";
+        let index = 1;
+        const sortedPrefixes = Array.from(groups.keys()).sort();
+        
+        sortedPrefixes.forEach(prefix => {
+            const filesInGroup = groups.get(prefix);
+            const count = filesInGroup.length;
+            const missingCount = count < 3 ? (3 - count) : 0;
+            
+            let statusBadge = "";
+            if (count >= 3) {
+                statusBadge = `<span class="badge success" style="background: rgba(16, 185, 129, 0.15); color: #10b981; padding: 2px 8px; border-radius: 4px; font-weight: 500; font-size: 0.7rem;">3+ Files (Complete)</span>`;
+            } else {
+                statusBadge = `<span class="badge danger" style="background: rgba(239, 68, 68, 0.15); color: #ef4444; padding: 2px 8px; border-radius: 4px; font-weight: 500; font-size: 0.7rem;">${count} Files (${missingCount} Missing)</span>`;
+            }
+            
+            const filesStr = filesInGroup.map(f => f.name).join(", ");
+            
+            html += `
+                <tr>
+                    <td>${index++}</td>
+                    <td style="font-weight: 600;">${prefix}</td>
+                    <td>${count}</td>
+                    <td>${statusBadge}</td>
+                    <td style="max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${filesStr}">${filesStr}</td>
+                </tr>
+            `;
+        });
+        
+        if (fldPreviewTbody) {
+            fldPreviewTbody.innerHTML = html;
+        }
+        
+        fldEmptyState.classList.add('hidden');
+        fldTableContainer.classList.remove('hidden');
+        
+        updateFldProgress(100, "Files loaded and analyzed.");
+        
+        if (btnFldRun) {
+            btnFldRun.classList.remove('hidden');
+        }
+        
+    } catch (err) {
+        console.error(err);
+        showToast("Error processing selected files: " + err.message, "error");
+        fldProgress.classList.add('hidden');
+    }
+}
+
+async function runFolderCreateProcess() {
+    if (fldUploadedFiles.length === 0) {
+        showToast("No files loaded. Please upload files first.", "error");
+        return;
+    }
+    
+    const btnFldRun = document.getElementById('btn-fld-run');
+    if (fldGeneratedZipBlob) {
+        // If already generated, this is a download action
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(fldGeneratedZipBlob);
+        a.download = fldGeneratedZipName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        showToast("Downloaded folders ZIP successfully!", "success");
+        return;
+    }
+    
+    const fldProgress = document.getElementById('fld-progress');
+    const fldProgressPercent = document.getElementById('fld-progress-percent');
+    const fldProgressText = document.getElementById('fld-progress-text');
+    const fldProgressFill = document.getElementById('fld-progress-fill');
+    
+    fldProgress.classList.remove('hidden');
+    const updateFldProgress = (percent, text) => {
+        fldProgressPercent.textContent = `${Math.round(percent)}%`;
+        fldProgressFill.style.width = `${percent}%`;
+        if (text) fldProgressText.textContent = text;
+    };
+    
+    try {
+        btnFldRun.disabled = true;
+        updateFldProgress(10, "Grouping files by prefix...");
+        await new Promise(r => setTimeout(r, 200));
+        
+        // Group files by prefix
+        const groups = new Map();
+        fldUploadedFiles.forEach(fileObj => {
+            const name = fileObj.name;
+            if (name.includes("-")) {
+                const prefix = name.split("-")[0].trim();
+                if (prefix !== "") {
+                    if (!groups.has(prefix)) {
+                        groups.set(prefix, []);
+                    }
+                    groups.get(prefix).push(fileObj);
+                }
+            }
+        });
+        
+        if (groups.size === 0) {
+            showToast("No files could be grouped (none had a prefix separated by '-').", "error");
+            fldProgress.classList.add('hidden');
+            btnFldRun.disabled = false;
+            return;
+        }
+        
+        const sortedPrefixes = Array.from(groups.keys()).sort();
+        const firstPrefix = sortedPrefixes[0];
+        const lastPrefix = sortedPrefixes[sortedPrefixes.length - 1];
+        
+        updateFldProgress(30, "Creating summary report sheets...");
+        await new Promise(r => setTimeout(r, 200));
+        
+        // Build Excel Summary
+        const summaryAOA = [
+            ["Folder Creation & Completeness Report"],
+            ["Folder Name (Prefix)", "Current File Count", "Missing Files Count", "Status"]
+        ];
+        
+        const missingList = [];
+        sortedPrefixes.forEach(prefix => {
+            const filesInGroup = groups.get(prefix);
+            const count = filesInGroup.length;
+            const missingCount = count < 3 ? (3 - count) : 0;
+            const status = count >= 3 ? "Complete" : `Missing ${missingCount} File(s)`;
+            summaryAOA.push([prefix, count, missingCount, status]);
+            if (missingCount > 0) {
+                missingList.push({ prefix, count, missingCount });
+            }
+        });
+        
+        // Create summary workbook
+        const summaryWS = XLSX.utils.aoa_to_sheet(summaryAOA);
+        
+        // Merge title
+        summaryWS['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 3 } }];
+        
+        // Apply styling to summary sheet
+        summaryWS['!views'] = [{ showGridLines: true }];
+        
+        // Auto-fit column widths
+        const colWidths = [
+            { wch: 25 }, // Folder Name
+            { wch: 20 }, // Current File Count
+            { wch: 20 }, // Missing Files Count
+            { wch: 22 }  // Status
+        ];
+        summaryWS['!cols'] = colWidths;
+        
+        // Row Heights
+        const rowHeights = [
+            { hpt: 28 }, // Title Row
+            { hpt: 24 }  // Header Row
+        ];
+        for (let r = 2; r < summaryAOA.length; r++) {
+            rowHeights.push({ hpt: 20 });
+        }
+        summaryWS['!rows'] = rowHeights;
+        
+        // Style cells
+        for (const cellKey in summaryWS) {
+            if (cellKey[0] === '!') continue;
+            const cell = summaryWS[cellKey];
+            
+            // Borders
+            cell.s = {
+                border: {
+                    top: { style: "thin", color: { rgb: "D1D5DB" } },
+                    bottom: { style: "thin", color: { rgb: "D1D5DB" } },
+                    left: { style: "thin", color: { rgb: "D1D5DB" } },
+                    right: { style: "thin", color: { rgb: "D1D5DB" } }
+                }
+            };
+            
+            const match = cellKey.match(/^([A-Z]+)(\d+)$/);
+            if (match) {
+                const col = match[1];
+                const rowNum = parseInt(match[2], 10);
+                const colIndex = XLSX.utils.decode_col(col);
+                
+                if (rowNum === 1) {
+                    // Title block
+                    cell.s.fill = { fgColor: { rgb: "4C1D95" } }; // Dark Purple title
+                    cell.s.font = { name: "Arial", sz: 12, bold: true, color: { rgb: "FFFFFF" } };
+                    cell.s.alignment = { horizontal: "center", vertical: "center" };
+                } else if (rowNum === 2) {
+                    // Header row
+                    cell.s.fill = { fgColor: { rgb: "6D28D9" } }; // Purple headers
+                    cell.s.font = { name: "Arial", sz: 10, bold: true, color: { rgb: "FFFFFF" } };
+                    cell.s.alignment = { horizontal: "center", vertical: "center" };
+                } else {
+                    // Data rows
+                    cell.s.font = { name: "Arial", sz: 10, color: { rgb: "000000" } };
+                    
+                    // Alignments
+                    if (colIndex === 0) {
+                        cell.s.alignment = { horizontal: "left", vertical: "center" };
+                    } else if (colIndex === 1 || colIndex === 2) {
+                        cell.s.alignment = { horizontal: "center", vertical: "center" };
+                    } else if (colIndex === 3) {
+                        cell.s.alignment = { horizontal: "center", vertical: "center" };
+                    }
+                    
+                    // Get row data
+                    const rowData = summaryAOA[rowNum - 1];
+                    const currentCount = rowData[1];
+                    
+                    if (currentCount < 3) {
+                        // Highlight missing file folders in soft red
+                        cell.s.fill = { fgColor: { rgb: "FEE2E2" } };
+                        cell.s.font.color = { rgb: "991B1B" };
+                    }
+                }
+            }
+        }
+        
+        const summaryWB = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(summaryWB, summaryWS, "Folder_Summary");
+        const summaryBuffer = XLSX.write(summaryWB, { bookType: 'xlsx', type: 'array' });
+        const summaryBlob = new Blob([summaryBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        
+        // Initialize Zip
+        updateFldProgress(50, "Generating ZIP archive...");
+        await new Promise(r => setTimeout(r, 200));
+        
+        const zip = new JSZip();
+        
+        // Add summary report to root of zip
+        zip.file("Folder_Summary.xlsx", summaryBlob);
+        
+        // Add files grouped in folders
+        sortedPrefixes.forEach(prefix => {
+            const filesInGroup = groups.get(prefix);
+            filesInGroup.forEach(fileObj => {
+                // Add under the prefix folder in ZIP
+                zip.file(`${prefix}/${fileObj.name}`, fileObj.fileObj);
+            });
+        });
+        
+        updateFldProgress(80, "Compiling final ZIP file...");
+        await new Promise(r => setTimeout(r, 200));
+        
+        const zipBlob = await zip.generateAsync({ type: "blob" });
+        
+        fldGeneratedZipBlob = zipBlob;
+        fldGeneratedZipName = `${firstPrefix}-${lastPrefix}.zip`;
+        
+        updateFldProgress(100, "Success!");
+        showToast(`ZIP created successfully with ${groups.size} folders!`, "success");
+        
+        // Update button state to Download
+        btnFldRun.innerHTML = `
+            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 5px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            Download ZIP
+        `;
+        btnFldRun.style.background = "var(--color-od)"; // Purple/Indigo
+        btnFldRun.style.borderColor = "var(--color-od)";
+        btnFldRun.disabled = false;
+        
+    } catch (err) {
+        console.error(err);
+        showToast("Error creating folders and ZIP: " + err.message, "error");
+        btnFldRun.disabled = false;
+        fldProgress.classList.add('hidden');
+    }
+}
+
+// ==========================
+// INVOICE ERROR TAB LOGIC
+// ==========================
+
+function setupInvoiceError() {
+    const invDropzone = document.getElementById('inv-dropzone');
+    const invFileInput = document.getElementById('inv-file-input');
+    const btnInvSelectFiles = document.getElementById('btn-inv-select-files');
+    const btnInvRun = document.getElementById('btn-inv-run');
+    
+    if (!invDropzone || !invFileInput || !btnInvRun) return;
+    
+    // Select Files click trigger
+    if (btnInvSelectFiles) {
+        btnInvSelectFiles.addEventListener('click', (e) => {
+            e.stopPropagation();
+            invFileInput.click();
+        });
+    }
+    
+    invDropzone.addEventListener('click', () => {
+        invFileInput.click();
+    });
+    
+    invFileInput.addEventListener('change', (e) => {
+        handleInvFileSelection(e.target.files);
+    });
+    
+    // Drag & Drop
+    invDropzone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        invDropzone.classList.add('dragover');
+    });
+    
+    invDropzone.addEventListener('dragleave', () => {
+        invDropzone.classList.remove('dragover');
+    });
+    
+    invDropzone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        invDropzone.classList.remove('dragover');
+        if (e.dataTransfer.files.length > 0) {
+            handleInvFileSelection(e.dataTransfer.files);
+        }
+    });
+    
+    // Run process
+    btnInvRun.addEventListener('click', runInvoiceErrorProcess);
+}
+
+function resetInvoiceErrorButtonState() {
+    invGeneratedZipBlob = null;
+    invGeneratedZipName = "";
+    
+    const btnInvRun = document.getElementById('btn-inv-run');
+    if (btnInvRun) {
+        btnInvRun.innerHTML = `
+            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 5px;"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+            Process Invoice Errors
+        `;
+        btnInvRun.style.background = ""; // Restore default style
+        btnInvRun.style.borderColor = "";
+        btnInvRun.disabled = false;
+    }
+    
+    const invFileLabel = document.getElementById('inv-file-label');
+    if (invFileLabel) {
+        invFileLabel.textContent = "Drag & Drop invoice files here";
+    }
+}
+
+async function handleInvFileSelection(files) {
+    resetInvoiceErrorButtonState();
+    if (!files || files.length === 0) return;
+    
+    const invProgress = document.getElementById('inv-progress');
+    const invProgressPercent = document.getElementById('inv-progress-percent');
+    const invProgressText = document.getElementById('inv-progress-text');
+    const invProgressFill = document.getElementById('inv-progress-fill');
+    const invEmptyState = document.getElementById('inv-empty-state');
+    const invTableContainer = document.getElementById('inv-table-container');
+    const invPreviewTbody = document.getElementById('inv-preview-tbody');
+    const invFileCount = document.getElementById('inv-file-count');
+    const btnInvRun = document.getElementById('btn-inv-run');
+    const invFileLabel = document.getElementById('inv-file-label');
+    
+    invProgress.classList.remove('hidden');
+    const updateInvProgress = (percent, text) => {
+        invProgressPercent.textContent = `${Math.round(percent)}%`;
+        invProgressFill.style.width = `${percent}%`;
+        if (text) invProgressText.textContent = text;
+    };
+    
+    updateInvProgress(5, "Reading uploaded invoice files...");
+    invUploadedFiles = [];
+    
+    try {
+        const flatFilesList = [];
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+            const ext = file.name.split('.').pop().toLowerCase();
+            
+            if (ext === 'zip') {
+                updateInvProgress(10 + Math.round((i / files.length) * 40), `Extracting ZIP: ${file.name}...`);
+                const extracted = await extractSpreadsheetsFromZip(file);
+                flatFilesList.push(...extracted);
+            } else if (ext === 'xlsx' || ext === 'xls' || ext === 'csv') {
+                flatFilesList.push({
+                    name: file.name,
+                    ext: ext,
+                    blob: file
+                });
+            }
+        }
+        
+        if (flatFilesList.length === 0) {
+            invProgress.classList.add('hidden');
+            showToast("No valid Excel or CSV files found.", "error");
+            return;
+        }
+        
+        if (invFileLabel) {
+            invFileLabel.textContent = `${flatFilesList.length} files loaded`;
+        }
+        if (invFileCount) {
+            invFileCount.textContent = `${flatFilesList.length} files loaded`;
+        }
+        
+        // Save to invUploadedFiles
+        flatFilesList.forEach(f => {
+            invUploadedFiles.push({
+                name: f.name,
+                ext: f.ext,
+                fileObj: f.blob
+            });
+        });
+        
+        updateInvProgress(50, "Analyzing spreadsheet columns...");
+        
+        // Read the first file to show a preview of errors and parties
+        const firstFile = flatFilesList[0];
+        const aoa = await readExcelAsAOA(firstFile.blob);
+        
+        if (aoa.length <= 1) {
+            updateInvProgress(100, "Loaded empty sheet.");
+            return;
+        }
+        
+        const headerRow = aoa[0];
+        const dataRows = aoa.slice(1);
+        
+        let descColIndex = headerRow.findIndex(cell => String(cell || "").trim().toLowerCase() === 'description');
+        let sellerColIndex = headerRow.findIndex(cell => String(cell || "").trim().toLowerCase() === 'seller/customer name');
+        
+        if (descColIndex === -1) descColIndex = 6;
+        if (sellerColIndex === -1) sellerColIndex = 7;
+        
+        // Count invoice locked rows
+        const lockedCount = dataRows.filter(row => String(row[descColIndex] || "").trim().toLowerCase() === "invoice locked").length;
+        const cleanedRows = dataRows.filter(row => String(row[descColIndex] || "").trim().toLowerCase() !== "invoice locked");
+        
+        // Group remaining rows to show preview of what will be generated
+        const errorGroups = new Map();
+        cleanedRows.forEach(row => {
+            const errorVal = String(row[descColIndex] || "").trim();
+            const partyVal = String(row[sellerColIndex] || "").trim();
+            if (errorVal && partyVal) {
+                if (!errorGroups.has(errorVal)) {
+                    errorGroups.set(errorVal, new Map());
+                }
+                const partyMap = errorGroups.get(errorVal);
+                if (!partyMap.has(partyVal)) {
+                    partyMap.set(partyVal, []);
+                }
+                partyMap.get(partyVal).push(row);
+            }
+        });
+        
+        let html = "";
+        let index = 1;
+        
+        if (lockedCount > 0) {
+            html += `
+                <tr style="background: rgba(239, 68, 68, 0.05);">
+                    <td>-</td>
+                    <td style="font-weight: 600; color: #ef4444;">Invoice Locked Rows</td>
+                    <td><span class="badge danger" style="background: rgba(239, 68, 68, 0.15); color: #ef4444; padding: 2px 8px; border-radius: 4px; font-weight: 500; font-size: 0.7rem;">Will Be Deleted</span></td>
+                    <td style="color: #991b1b; font-weight: 500;">${lockedCount} rows flagged for removal.</td>
+                </tr>
+            `;
+        }
+        
+        for (const [errorType, partyMap] of errorGroups.entries()) {
+            for (const [partyName, rows] of partyMap.entries()) {
+                html += `
+                    <tr>
+                        <td>${index++}</td>
+                        <td style="font-weight: 600;">${partyName}</td>
+                        <td><span class="badge danger" style="background: rgba(245, 158, 11, 0.15); color: #d97706; padding: 2px 8px; border-radius: 4px; font-weight: 500; font-size: 0.7rem;">${errorType}</span></td>
+                        <td>${rows.length} rows. Will create <code>${partyName}-${errorType}.xlsx</code></td>
+                    </tr>
+                `;
+            }
+        }
+        
+        if (invPreviewTbody) {
+            invPreviewTbody.innerHTML = html;
+        }
+        
+        invEmptyState.classList.add('hidden');
+        invTableContainer.classList.remove('hidden');
+        
+        updateInvProgress(100, `Loaded: ${firstFile.name}. Found ${errorGroups.size} error groups.`);
+        
+        if (btnInvRun) {
+            btnInvRun.classList.remove('hidden');
+        }
+        
+    } catch (err) {
+        console.error(err);
+        showToast("Error processing invoice files: " + err.message, "error");
+        invProgress.classList.add('hidden');
+    }
+}
+
+async function runInvoiceErrorProcess() {
+    if (invUploadedFiles.length === 0) {
+        showToast("No files loaded. Please upload an Excel or CSV file first.", "error");
+        return;
+    }
+    
+    const btnInvRun = document.getElementById('btn-inv-run');
+    if (invGeneratedZipBlob) {
+        // If already generated, this is a download action
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(invGeneratedZipBlob);
+        a.download = invGeneratedZipName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        showToast("Downloaded Invoice Error package successfully!", "success");
+        return;
+    }
+    
+    const invProgress = document.getElementById('inv-progress');
+    const invProgressPercent = document.getElementById('inv-progress-percent');
+    const invProgressText = document.getElementById('inv-progress-text');
+    const invProgressFill = document.getElementById('inv-progress-fill');
+    const invPreviewTbody = document.getElementById('inv-preview-tbody');
+    
+    invProgress.classList.remove('hidden');
+    const updateInvProgress = (percent, text) => {
+        invProgressPercent.textContent = `${Math.round(percent)}%`;
+        invProgressFill.style.width = `${percent}%`;
+        if (text) invProgressText.textContent = text;
+    };
+    
+    try {
+        btnInvRun.disabled = true;
+        updateInvProgress(5, "Reading uploaded file...");
+        
+        const uploadedFile = invUploadedFiles[0];
+        const aoa = await readExcelAsAOA(uploadedFile.fileObj);
+        
+        if (aoa.length <= 1) {
+            showToast("The uploaded file does not contain enough rows to process.", "error");
+            btnInvRun.disabled = false;
+            invProgress.classList.add('hidden');
+            return;
+        }
+        
+        const headerRow = aoa[0];
+        const dataRows = aoa.slice(1);
+        
+        // Find column indices dynamically
+        let descColIndex = headerRow.findIndex(cell => String(cell || "").trim().toLowerCase() === 'description');
+        let sellerColIndex = headerRow.findIndex(cell => String(cell || "").trim().toLowerCase() === 'seller/customer name');
+        
+        // Fallbacks
+        if (descColIndex === -1) descColIndex = 6; // Column G
+        if (sellerColIndex === -1) sellerColIndex = 7; // Column H
+        
+        updateInvProgress(20, "Filtering out 'Invoice Locked' rows...");
+        await new Promise(r => setTimeout(r, 200));
+        
+        // 1. Delete rows where Column G (Description) is "Invoice Locked"
+        const lockedRowsCount = dataRows.filter(row => String(row[descColIndex] || "").trim().toLowerCase() === "invoice locked").length;
+        const cleanedDataRows = dataRows.filter(row => String(row[descColIndex] || "").trim().toLowerCase() !== "invoice locked");
+        
+        // Create Cleaned Original Workbook
+        const cleanedAOA = [headerRow, ...cleanedDataRows];
+        const cleanedWS = XLSX.utils.aoa_to_sheet(cleanedAOA);
+        applyWorksheetFormatting(cleanedWS, cleanedAOA, false);
+        const cleanedWB = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(cleanedWB, cleanedWS, "Cleaned_Original");
+        const cleanedBuffer = XLSX.write(cleanedWB, { bookType: 'xlsx', type: 'array' });
+        const cleanedBlob = new Blob([cleanedBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        
+        updateInvProgress(40, "Grouping errors and party details...");
+        await new Promise(r => setTimeout(r, 200));
+        
+        // Group remaining rows by error type (Column G) and then by Party Name (Column H)
+        const errorGroups = new Map();
+        
+        cleanedDataRows.forEach(row => {
+            const errorVal = String(row[descColIndex] || "").trim();
+            const partyVal = String(row[sellerColIndex] || "").trim();
+            
+            if (errorVal && partyVal) {
+                if (!errorGroups.has(errorVal)) {
+                    errorGroups.set(errorVal, new Map());
+                }
+                
+                const partyMap = errorGroups.get(errorVal);
+                if (!partyMap.has(partyVal)) {
+                    partyMap.set(partyVal, []);
+                }
+                
+                partyMap.get(partyVal).push(row);
+            }
+        });
+        
+        if (errorGroups.size === 0) {
+            showToast("No valid invoice errors found to process.", "warning");
+            btnInvRun.disabled = false;
+            invProgress.classList.add('hidden');
+            return;
+        }
+        
+        const zip = new JSZip();
+        
+        // Add Cleaned Original file
+        const origBaseName = uploadedFile.name.substring(0, uploadedFile.name.lastIndexOf('.')) || uploadedFile.name;
+        zip.file(`Cleaned_${origBaseName}.xlsx`, cleanedBlob);
+        
+        const combinedWb = XLSX.utils.book_new();
+        const existingSheetNames = new Set();
+        
+        // For Summary Excel
+        const summaryAOA = [
+            ["Invoice Error Summary Report"],
+            ["Party Name", "Error Description", "Affected Row Count", "Status"]
+        ];
+        
+        let htmlPreview = "";
+        let previewIndex = 1;
+        
+        updateInvProgress(60, "Generating individual and combined sheets...");
+        await new Promise(r => setTimeout(r, 200));
+        
+        // Loop through errors and parties
+        for (const [errorType, partyMap] of errorGroups.entries()) {
+            for (const [partyName, rows] of partyMap.entries()) {
+                const comboName = `${partyName}-${errorType}`;
+                
+                // Form merged Row 1 title and Headers Row 2
+                const titleRow = Array(headerRow.length).fill("");
+                titleRow[0] = comboName;
+                
+                const sheetAOA = [titleRow, headerRow, ...rows];
+                const ws = XLSX.utils.aoa_to_sheet(sheetAOA);
+                
+                // Merge Row 1 across all columns
+                if (headerRow.length > 1) {
+                    ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: headerRow.length - 1 } }];
+                }
+                
+                // Format worksheet
+                applyWorksheetFormatting(ws, sheetAOA, true);
+                
+                // Create individual workbook
+                const groupWb = XLSX.utils.book_new();
+                const uniqueSheetName = getUniqueSheetName(comboName, existingSheetNames);
+                XLSX.utils.book_append_sheet(groupWb, ws, uniqueSheetName);
+                
+                const groupBuffer = XLSX.write(groupWb, { bookType: 'xlsx', type: 'array' });
+                const groupBlob = new Blob([groupBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                
+                // Save directly in the ZIP root
+                zip.file(`${comboName}.xlsx`, groupBlob);
+                
+                // Append to Combined Workbook
+                XLSX.utils.book_append_sheet(combinedWb, ws, uniqueSheetName);
+                
+                // Append to Summary report data
+                summaryAOA.push([partyName, errorType, rows.length, "Failed Check"]);
+                
+                // Build UI Preview row html
+                htmlPreview += `
+                    <tr>
+                        <td>${previewIndex++}</td>
+                        <td style="font-weight: 600;">${partyName}</td>
+                        <td><span class="badge danger" style="background: rgba(239, 68, 68, 0.15); color: #ef4444; padding: 2px 8px; border-radius: 4px; font-weight: 500; font-size: 0.7rem;">${errorType}</span></td>
+                        <td>${rows.length} rows processed. File: <code>${comboName}.xlsx</code></td>
+                    </tr>
+                `;
+            }
+        }
+        
+        updateInvProgress(80, "Creating combined and summary files...");
+        await new Promise(r => setTimeout(r, 200));
+        
+        // Save Combined Workbook
+        const combinedBuffer = XLSX.write(combinedWb, { bookType: 'xlsx', type: 'array' });
+        const combinedBlob = new Blob([combinedBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        zip.file("Invoice_Error_Combined_Report.xlsx", combinedBlob);
+        
+        // Create and Save Summary Workbook
+        const summaryWS = XLSX.utils.aoa_to_sheet(summaryAOA);
+        summaryWS['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 3 } }];
+        
+        // Style summary workbook
+        summaryWS['!views'] = [{ showGridLines: true }];
+        summaryWS['!cols'] = [{ wch: 35 }, { wch: 25 }, { wch: 20 }, { wch: 15 }];
+        const summaryHeights = [{ hpt: 28 }, { hpt: 24 }];
+        for (let r = 2; r < summaryAOA.length; r++) {
+            summaryHeights.push({ hpt: 20 });
+        }
+        summaryWS['!rows'] = summaryHeights;
+        
+        // Format cells
+        for (const cellKey in summaryWS) {
+            if (cellKey[0] === '!') continue;
+            const cell = summaryWS[cellKey];
+            cell.s = {
+                border: {
+                    top: { style: "thin", color: { rgb: "D1D5DB" } },
+                    bottom: { style: "thin", color: { rgb: "D1D5DB" } },
+                    left: { style: "thin", color: { rgb: "D1D5DB" } },
+                    right: { style: "thin", color: { rgb: "D1D5DB" } }
+                }
+            };
+            
+            const match = cellKey.match(/^([A-Z]+)(\d+)$/);
+            if (match) {
+                const col = match[1];
+                const rowNum = parseInt(match[2], 10);
+                const colIndex = XLSX.utils.decode_col(col);
+                
+                if (rowNum === 1) {
+                    cell.s.fill = { fgColor: { rgb: "C2410C" } }; // Dark Orange/Red title
+                    cell.s.font = { name: "Arial", sz: 12, bold: true, color: { rgb: "FFFFFF" } };
+                    cell.s.alignment = { horizontal: "center", vertical: "center" };
+                } else if (rowNum === 2) {
+                    cell.s.fill = { fgColor: { rgb: "EA580C" } }; // Orange header
+                    cell.s.font = { name: "Arial", sz: 10, bold: true, color: { rgb: "FFFFFF" } };
+                    cell.s.alignment = { horizontal: "center", vertical: "center" };
+                } else {
+                    cell.s.font = { name: "Arial", sz: 10, color: { rgb: "000000" } };
+                    if (colIndex === 0 || colIndex === 1) {
+                        cell.s.alignment = { horizontal: "left", vertical: "center" };
+                    } else {
+                        cell.s.alignment = { horizontal: "center", vertical: "center" };
+                    }
+                    
+                    // Highlight rows
+                    cell.s.fill = { fgColor: { rgb: "FFF7ED" } }; // Soft orange/peach warning fill
+                    cell.s.font.color = { rgb: "9A3412" };
+                }
+            }
+        }
+        
+        const summaryWB = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(summaryWB, summaryWS, "Summary_Report");
+        const summaryBuffer = XLSX.write(summaryWB, { bookType: 'xlsx', type: 'array' });
+        const summaryBlob = new Blob([summaryBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        zip.file("Invoice_Error_Summary.xlsx", summaryBlob);
+        
+        // Package Zip
+        updateInvProgress(95, "Compiling final ZIP package...");
+        await new Promise(r => setTimeout(r, 200));
+        
+        const zipBlob = await zip.generateAsync({ type: "blob" });
+        
+        invGeneratedZipBlob = zipBlob;
+        invGeneratedZipName = `Invoice_Error_Package_${origBaseName}.zip`;
+        
+        updateInvProgress(100, "Success!");
+        showToast(`Invoice error package created successfully! Deleted ${lockedRowsCount} 'Invoice Locked' rows.`, "success");
+        
+        if (invPreviewTbody) {
+            invPreviewTbody.innerHTML = htmlPreview;
+        }
+        
+        // Update button state to Download
+        btnInvRun.innerHTML = `
+            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 5px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            Download Invoice Error ZIP
+        `;
+        btnInvRun.style.background = "var(--color-unmatched)"; // Warm Orange
+        btnInvRun.style.borderColor = "var(--color-unmatched)";
+        btnInvRun.disabled = false;
+        
+    } catch (err) {
+        console.error(err);
+        showToast("Error processing invoice errors: " + err.message, "error");
+        btnInvRun.disabled = false;
+        invProgress.classList.add('hidden');
+    }
+}
+
+function getUniqueSheetName(name, existingNames) {
+    // Truncate to max 31 characters (Excel limitation) and remove invalid characters like: \ / ? * [ ]
+    let cleaned = name.replace(/[\\\/:\?\*\[\]]/g, "_");
+    let truncated = cleaned.substring(0, 31);
+    if (!existingNames.has(truncated.toLowerCase())) {
+        existingNames.add(truncated.toLowerCase());
+        return truncated;
+    }
+    let counter = 1;
+    while (true) {
+        const suffix = `_${counter}`;
+        const checkName = cleaned.substring(0, 31 - suffix.length) + suffix;
+        if (!existingNames.has(checkName.toLowerCase())) {
+            existingNames.add(checkName.toLowerCase());
+            return checkName;
+        }
+        counter++;
+    }
 }

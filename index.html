@@ -31,24 +31,7 @@
 
         <!-- Navigation Tabs -->
         <div class="app-tabs">
-            <button class="tab-btn active" data-tab="tab-processor">
-                <svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
-                File Renamer & Processor
-            </button>
-            <button class="tab-btn" data-tab="tab-database">
-                <svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path></svg>
-                Myntra Party Database
-            </button>
-
-            <!-- Divider -->
-            <div class="tab-divider"></div>
-
-            <!-- New Feature Buttons (No logic yet) -->
-            <button class="tab-btn" data-tab="tab-separate" id="btn-separate-file">
-                <svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="8" height="18" rx="2"></rect><rect x="14" y="3" width="8" height="18" rx="2"></rect></svg>
-                Separate File
-            </button>
-            <button class="tab-btn" data-tab="tab-rename" id="btn-rename-file">
+            <button class="tab-btn active" data-tab="tab-rename" id="btn-rename-file">
                 <svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>
                 Rename File
             </button>
@@ -56,14 +39,34 @@
                 <svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"></polyline><line x1="4" y1="20" x2="21" y2="3"></line><polyline points="21 16 21 21 16 21"></polyline><line x1="15" y1="15" x2="21" y2="21"></line><line x1="4" y1="4" x2="9" y2="9"></line></svg>
                 Merge File
             </button>
+            <button class="tab-btn" data-tab="tab-separate" id="btn-separate-file">
+                <svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="8" height="18" rx="2"></rect><rect x="14" y="3" width="8" height="18" rx="2"></rect></svg>
+                Separate File
+            </button>
+            <button class="tab-btn" data-tab="tab-processor">
+                <svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                File Renamer & Processor
+            </button>
+            <button class="tab-btn" data-tab="tab-folder-create" id="btn-folder-create-tab">
+                <svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path><line x1="12" y1="11" x2="12" y2="17"></line><line x1="9" y1="14" x2="15" y2="14"></line></svg>
+                Folder Create
+            </button>
+            <button class="tab-btn" data-tab="tab-database">
+                <svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path></svg>
+                Myntra Party Database
+            </button>
             <button class="tab-btn" data-tab="tab-myntra-error" id="btn-myntra-error">
                 <svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
                 Myntra Error
             </button>
+            <button class="tab-btn" data-tab="tab-invoice-error" id="btn-invoice-error-tab">
+                <svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+                Invoice Error
+            </button>
         </div>
 
         <!-- Tab 1: Processor Content -->
-        <div class="tab-content active" id="tab-processor">
+        <div class="tab-content" id="tab-processor">
             <!-- Main Layout -->
             <main class="app-grid">
                 <!-- Left Side: Controls & Rules -->
@@ -366,6 +369,84 @@
             </main>
         </div>
 
+        <!-- Tab 7: Folder Create Content -->
+        <div class="tab-content" id="tab-folder-create">
+            <div class="app-grid">
+                <!-- Left Panel: Upload & Action -->
+                <section class="panel-left">
+                    <div class="card glass upload-card">
+                        <div class="card-header">
+                            <h2>Upload Files to Group</h2>
+                            <span class="info-tag">Excel & CSV files</span>
+                        </div>
+                        <div class="dropzone" id="fld-dropzone">
+                            <input type="file" id="fld-file-input" multiple accept=".xlsx,.xls,.csv" class="hidden-input">
+                            <div class="dropzone-content">
+                                <div class="upload-icon">
+                                    <svg viewBox="0 0 24 24" width="40" height="40" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                                </div>
+                                <h3 id="fld-file-label">Drag & Drop files here</h3>
+                                <p>Supports .xlsx, .xls, .csv files</p>
+                                <button class="btn btn-secondary" id="btn-fld-select-files" style="margin-top: 10px;">Select Files</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button class="btn btn-primary btn-glow hidden" id="btn-fld-run" style="width: 100%; padding: 0.7rem; font-size: 0.9rem; justify-content: center;">
+                        <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 5px;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+                        Create Folders & Zip
+                    </button>
+                </section>
+
+                <!-- Right Panel: Preview & Results -->
+                <section class="panel-right">
+                    <!-- Progress Bar -->
+                    <div class="inline-progress hidden" id="fld-progress">
+                        <div class="inline-progress-header">
+                            <span class="progress-percent" id="fld-progress-percent">0%</span>
+                            <span class="progress-status" id="fld-progress-text">Processing...</span>
+                        </div>
+                        <div class="progress-bar-wrapper">
+                            <div class="progress-bar-fill" id="fld-progress-fill"></div>
+                        </div>
+                    </div>
+
+                    <!-- Preview Card -->
+                    <div class="card glass preview-card" style="min-height: 400px;">
+                        <div class="card-header">
+                            <h2>Folder Grouping Preview</h2>
+                            <span class="info-tag" id="fld-file-count">0 files loaded</span>
+                        </div>
+
+                        <!-- Empty State -->
+                        <div class="empty-state" id="fld-empty-state">
+                            <div class="empty-icon">
+                                <svg viewBox="0 0 24 24" width="52" height="52" stroke="currentColor" stroke-width="1.2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+                            </div>
+                            <h3>No files loaded</h3>
+                            <p>Upload Excel or CSV files to preview folder groupings and missing files.</p>
+                        </div>
+
+                        <!-- Table Container -->
+                        <div class="table-container hidden" id="fld-table-container">
+                            <table class="preview-table">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 50px;">#</th>
+                                        <th>Folder Name (Prefix)</th>
+                                        <th>File Count</th>
+                                        <th>Status</th>
+                                        <th>Files</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="fld-preview-tbody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </div>
+
         <!-- Tab 2: Database Content -->
         <div class="tab-content" id="tab-database">
             <div class="app-grid">
@@ -566,7 +647,7 @@
         </div>
 
         <!-- Tab 4: Rename File Content -->
-        <div class="tab-content" id="tab-rename">
+        <div class="tab-content active" id="tab-rename">
             <div class="app-grid">
                 <!-- Left Panel: Upload & Config -->
                 <section class="panel-left">
@@ -866,6 +947,83 @@
                                     </tr>
                                 </thead>
                                 <tbody id="err-preview-tbody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </div>
+
+        <!-- Tab 8: Invoice Error Content -->
+        <div class="tab-content" id="tab-invoice-error">
+            <div class="app-grid">
+                <!-- Left Panel: Upload & Config -->
+                <section class="panel-left">
+                    <div class="card glass upload-card">
+                        <div class="card-header">
+                            <h2>Upload Invoice Files</h2>
+                            <span class="info-tag">Excel & CSV files</span>
+                        </div>
+                        <div class="dropzone" id="inv-dropzone">
+                            <input type="file" id="inv-file-input" multiple accept=".xlsx,.xls,.csv" class="hidden-input">
+                            <div class="dropzone-content">
+                                <div class="upload-icon">
+                                    <svg viewBox="0 0 24 24" width="40" height="40" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                                </div>
+                                <h3 id="inv-file-label">Drag & Drop invoice files here</h3>
+                                <p>Supports .xlsx, .xls, .csv files</p>
+                                <button class="btn btn-secondary" id="btn-inv-select-files" style="margin-top: 10px;">Select Files</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button class="btn btn-primary btn-glow hidden" id="btn-inv-run" style="width: 100%; padding: 0.7rem; font-size: 0.9rem; justify-content: center;">
+                        <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 5px;"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+                        Process Invoice Errors
+                    </button>
+                </section>
+
+                <!-- Right Panel: Preview & Results -->
+                <section class="panel-right">
+                    <!-- Progress Bar -->
+                    <div class="inline-progress hidden" id="inv-progress">
+                        <div class="inline-progress-header">
+                            <span class="progress-percent" id="inv-progress-percent">0%</span>
+                            <span class="progress-status" id="inv-progress-text">Processing...</span>
+                        </div>
+                        <div class="progress-bar-wrapper">
+                            <div class="progress-bar-fill" id="inv-progress-fill"></div>
+                        </div>
+                    </div>
+
+                    <!-- Preview Card -->
+                    <div class="card glass preview-card" style="min-height: 400px;">
+                        <div class="card-header">
+                            <h2>Invoice Error Preview</h2>
+                            <span class="info-tag" id="inv-file-count">0 files loaded</span>
+                        </div>
+
+                        <!-- Empty State -->
+                        <div class="empty-state" id="inv-empty-state">
+                            <div class="empty-icon">
+                                <svg viewBox="0 0 24 24" width="52" height="52" stroke="currentColor" stroke-width="1.2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+                            </div>
+                            <h3>No files loaded</h3>
+                            <p>Upload Invoice files to preview and detect errors.</p>
+                        </div>
+
+                        <!-- Table Container -->
+                        <div class="table-container hidden" id="inv-table-container">
+                            <table class="preview-table">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 50px;">#</th>
+                                        <th>File Name</th>
+                                        <th>Error Status</th>
+                                        <th>Details</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="inv-preview-tbody"></tbody>
                             </table>
                         </div>
                     </div>
