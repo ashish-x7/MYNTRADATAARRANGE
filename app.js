@@ -972,6 +972,23 @@ async function processPartyPipeline(odFileObj, dtFileObj, summaryFileObj, partyC
     
     // Step 10: GST Not Applicable Export (VBA Export_GST_NotApplicable_FINAL_CLEAN)
     addLog(`[${partyCode}] Running GST Not Applicable checks...`, "info");
+    
+    // Dynamically find header indices with fallbacks
+    const headerRow = filteredDtRows[0] || [];
+    const findColIndex = (name, fallback) => {
+        const idx = headerRow.findIndex(h => String(h || "").trim().toLowerCase() === name.toLowerCase());
+        return idx !== -1 ? idx : fallback;
+    };
+    
+    const idxAP = findColIndex("Tax Rate", 41);
+    const idxAV = findColIndex("Selling Price", 47);
+    const idxAX = findColIndex("Item Price(Excluding Tax)", 49);
+    const idxBH = findColIndex("IGST Rate", 59);
+    const idxBI = findColIndex("IGST Amount", 60);
+    const idxBJ = findColIndex("CGST Amount", 61);
+    const idxBK = findColIndex("SGST Amount", 62);
+    const idxCJ = findColIndex("Billing State", 87);
+
     const gstRows = [["EE Invoice No", "Order Status", "Invoice Date", "Item Quantity", "Selling Price", "Item Price(Excluding Tax)"]];
     const gstCellStyles = {};
     let shadeIndex = 1;
@@ -980,7 +997,7 @@ async function processPartyPipeline(odFileObj, dtFileObj, summaryFileObj, partyC
     for (let r = 1; r < filteredDtRows.length; r++) {
         const row = filteredDtRows[r] || [];
         const colG = cleanCell(row[6]); // Column G (Index 6)
-        const colAp = cleanCell(row[41]); // Column AP (Index 41)
+        const colAp = cleanCell(row[idxAP]); // Column AP (Tax Rate)
         
         if (colG !== "" && colAp === "") {
             gstCreated = true;
@@ -1009,14 +1026,58 @@ async function processPartyPipeline(odFileObj, dtFileObj, summaryFileObj, partyC
                 };
             }
             
-            // Apply highlights in original DT
+            // Ensure the row has enough elements for all columns up to the maximum index we write to (index 87 / CJ)
+            const targetLength = Math.max(idxAP, idxAV, idxAX, idxBH, idxBI, idxBJ, idxBK, idxCJ) + 1;
+            if (row.length < targetLength) {
+                while (row.length < targetLength) {
+                    row.push("");
+                }
+            }
+            
+            // Write AP (idxAP) = 5
+            row[idxAP] = 5;
+            
+            // Get AV (Selling Price) value as float
+            const valAV = parseFloat(String(row[idxAV] || "").replace(/,/g, "")) || 0;
+            
+            // Helper functions for rounding matching Excel ROUND behavior
+            const round0 = (v) => Math.round(v);
+            const round4 = (v) => Math.round(v * 10000) / 10000;
+            
+            // Calculate equivalent of: =ROUND(AV2/1.05,0)
+            const valAX = round0(valAV / 1.05);
+            row[idxAX] = valAX;
+            
+            // Calculate equivalent of: =ROUND(AV2-ROUND(AV2/1.05,4),4)
+            const roundPart = round4(valAV / 1.05);
+            const valBH = round4(valAV - roundPart);
+            row[idxBH] = valBH;
+            
+            // Check Billing State CJ (idxCJ)
+            const stateVal = String(row[idxCJ] || "").toLowerCase().trim();
+            if (stateVal === "gujarat") {
+                row[idxBI] = ""; // BI empty
+                
+                // Calculate equivalent of: =ROUND((AV2-ROUND(AV2/1.05,4))/2,4)
+                const valBJ = round4((valAV - roundPart) / 2);
+                row[idxBJ] = valBJ; // BJ
+                row[idxBK] = valBJ; // BK (same value)
+            } else {
+                // Calculate equivalent of: =ROUND(AV2-ROUND(AV2/1.05,4),4)
+                const valBI = round4(valAV - roundPart);
+                row[idxBI] = valBI; // BI
+                row[idxBJ] = ""; // BJ
+                row[idxBK] = ""; // BK
+            }
+            
+            // Apply highlights in original DT using dynamic indices
             dtCellStyles[`${r},6`] = { fill: { fgColor: { rgb: "C8FFC8" } } };
             dtCellStyles[`${r},8`] = { fill: { fgColor: { rgb: "C8FFC8" } } };
             dtCellStyles[`${r},12`] = { fill: { fgColor: { rgb: "C8FFC8" } } };
             dtCellStyles[`${r},17`] = { fill: { fgColor: { rgb: "C8FFC8" } } };
-            dtCellStyles[`${r},47`] = { fill: { fgColor: { rgb: "C8FFC8" } } };
-            dtCellStyles[`${r},49`] = { fill: { fgColor: { rgb: "C8FFC8" } } };
-            dtCellStyles[`${r},41`] = { fill: { fgColor: { rgb: "B4F0B4" } } };
+            dtCellStyles[`${r},${idxAV}`] = { fill: { fgColor: { rgb: "C8FFC8" } } };
+            dtCellStyles[`${r},${idxAX}`] = { fill: { fgColor: { rgb: "C8FFC8" } } };
+            dtCellStyles[`${r},${idxAP}`] = { fill: { fgColor: { rgb: "B4F0B4" } } };
             
             shadeIndex++;
         }
