@@ -42,6 +42,16 @@ function handleRequest(e) {
   
   var response = {};
   
+  function getSheetRobust(name) {
+    var sheets = ss.getSheets();
+    var target = name.toUpperCase().trim();
+    for (var i = 0; i < sheets.length; i++) {
+      var sName = sheets[i].getName().toUpperCase().trim();
+      if (sName === target) return sheets[i];
+    }
+    return null;
+  }
+
   try {
     // READ Action
     if (action === "read" || !action) {
@@ -144,6 +154,123 @@ function handleRequest(e) {
       } else {
         response = { status: "error", message: "Party not found with code: " + code };
       }
+
+    // GET TRACKED ERRORS Action
+    } else if (action === "getTrackedErrors") {
+      var errSheet = getSheetRobust("ERROR TRACKING");
+      if (!errSheet) {
+        response = { status: "success", errors: [] };
+      } else {
+        var data = errSheet.getDataRange().getValues();
+        var header = data[0];
+        var now = new Date().getTime();
+        var THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+        var rowsToKeep = [header];
+        var errors = [];
+        
+        for (var i = 1; i < data.length; i++) {
+          var row = data[i];
+          if (row.length < 9) continue;
+          var createdDateStr = row[6];
+          var createdTime = new Date(createdDateStr).getTime();
+          
+          if (now - createdTime >= THIRTY_DAYS_MS) {
+            continue;
+          }
+          
+          rowsToKeep.push(row);
+          errors.push({
+            id: String(row[0]),
+            type: String(row[1]),
+            fileName: String(row[2]),
+            partyOrWh: String(row[3]),
+            errorType: String(row[4]),
+            rowsCount: Number(row[5]),
+            createdDate: String(row[6]),
+            solved: row[7] === true || String(row[7]).toLowerCase() === "true",
+            solvedDate: String(row[8])
+          });
+        }
+        
+        if (rowsToKeep.length < data.length) {
+          errSheet.clearContents();
+          errSheet.getRange(1, 1, rowsToKeep.length, rowsToKeep[0].length).setValues(rowsToKeep);
+        }
+        response = { status: "success", errors: errors };
+      }
+
+    // ADD TRACKED ERROR Action
+    } else if (action === "addTrackedError") {
+      var payload = JSON.parse(e.postData.contents);
+      var errSheet = getSheetRobust("ERROR TRACKING");
+      if (!errSheet) {
+        errSheet = ss.insertSheet("ERROR TRACKING");
+        errSheet.appendRow(["ID", "TYPE", "FILENAME", "PARTY_OR_WH", "ERROR_TYPE", "ROWS_COUNT", "CREATED_DATE", "SOLVED", "SOLVED_DATE"]);
+      }
+      errSheet.appendRow([
+        payload.id,
+        payload.type,
+        payload.fileName,
+        payload.partyOrWh,
+        payload.errorType,
+        payload.rowsCount,
+        payload.createdDate,
+        payload.solved,
+        payload.solvedDate
+      ]);
+      response = { status: "success", message: "Tracked error registered successfully!" };
+
+    // SOLVE TRACKED ERROR Action
+    } else if (action === "solveTrackedError") {
+      var payload = JSON.parse(e.postData.contents);
+      var errSheet = getSheetRobust("ERROR TRACKING");
+      if (!errSheet) {
+        return createResponse({ status: "error", message: "ERROR TRACKING sheet not found" });
+      }
+      var data = errSheet.getDataRange().getValues();
+      var updated = false;
+      for (var i = 1; i < data.length; i++) {
+        if (String(data[i][0]).trim() === String(payload.id).trim()) {
+          errSheet.getRange(i + 1, 8).setValue(true);
+          errSheet.getRange(i + 1, 9).setValue(payload.solvedDate);
+          updated = true;
+          break;
+        }
+      }
+      if (!updated) {
+        return createResponse({ status: "error", message: "Tracked error with ID " + payload.id + " not found" });
+      }
+      response = { status: "success", message: "Tracked error marked as solved!" };
+
+    // DELETE TRACKED ERROR Action
+    } else if (action === "deleteTrackedError") {
+      var payload = JSON.parse(e.postData.contents);
+      var errSheet = getSheetRobust("ERROR TRACKING");
+      if (!errSheet) {
+        return createResponse({ status: "error", message: "ERROR TRACKING sheet not found" });
+      }
+      var data = errSheet.getDataRange().getValues();
+      var deleted = false;
+      for (var i = data.length - 1; i >= 1; i--) {
+        if (String(data[i][0]).trim() === String(payload.id).trim()) {
+          errSheet.deleteRow(i + 1);
+          deleted = true;
+        }
+      }
+      if (!deleted) {
+        return createResponse({ status: "error", message: "Tracked error with ID " + payload.id + " not found" });
+      }
+      response = { status: "success", message: "Tracked error deleted successfully!" };
+
+    // CLEAR TRACKED ERRORS Action
+    } else if (action === "clearTrackedErrors") {
+      var errSheet = getSheetRobust("ERROR TRACKING");
+      if (errSheet) {
+        errSheet.clearContents();
+        errSheet.appendRow(["ID", "TYPE", "FILENAME", "PARTY_OR_WH", "ERROR_TYPE", "ROWS_COUNT", "CREATED_DATE", "SOLVED", "SOLVED_DATE"]);
+      }
+      response = { status: "success", message: "Tracked error history cleared successfully!" };
+
       
     } else {
       response = { status: "error", message: "Action '" + action + "' is invalid." };

@@ -17,6 +17,8 @@ let invUploadedFiles = [];
 let invGeneratedZipBlob = null;
 let invGeneratedZipName = "";
 
+let trackerSyncStatus = 'offline'; // 'online' (Google Sheets) or 'offline' (LocalStorage)
+
 // DOM Elements
 const dropzone = document.getElementById('dropzone');
 const fileInput = document.getElementById('file-input');
@@ -105,6 +107,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setupMyntraError();
     setupFolderCreate();
     setupInvoiceError();
+    setupErrorTracker();
 });
 
 
@@ -254,6 +257,9 @@ function setupEventHandlers() {
             
             if (targetTab === 'tab-database' && appsScriptUrl) {
                 loadPartyData();
+            }
+            if (targetTab === 'tab-error-tracker') {
+                renderErrorTracker();
             }
         });
     });
@@ -1922,12 +1928,7 @@ async function downloadAllAsZip() {
         });
         const partyCodesArray = Array.from(processedParties);
         const isBatch = partyCodesArray.length > 1;
-        let zipName;
-        if (isBatch) {
-            zipName = uploadedZipBaseName ? `${uploadedZipBaseName} Processed.zip` : `${partyCodesArray.join('-')} Processed.zip`;
-        } else {
-            zipName = partyCodesArray[0] ? `${partyCodesArray[0]}.zip` : "Myntra_Processed_Files.zip";
-        }
+        let zipName = "myntra_data_arrange_bundle.zip";
         
         const keepStructure = toggleStructure.checked;
 
@@ -2671,7 +2672,15 @@ async function runSeparateProcess() {
 
         // Save generated ZIP details in state variables instead of direct download trigger
         sepGeneratedZipBlob = await zip.generateAsync({ type: "blob" });
-        sepGeneratedZipName = `${sepFileNamePrefix}_Separated.zip`;
+        const sepModeInput = document.querySelector('input[name="split-mode"]:checked');
+        const sepModeVal = sepModeInput ? sepModeInput.value : "1";
+        const sepZipNames = {
+            "1": "myntra_simple_seprate_bundle.zip",
+            "2": "myntra_details_seprate_bundle.zip",
+            "3": "myntra_summary_seprate_bundle.zip",
+            "4": "myntra_tax_seprate_bundle.zip"
+        };
+        sepGeneratedZipName = sepZipNames[sepModeVal] || `${sepFileNamePrefix}_Separated.zip`;
 
         updateSepProgress(100, "Success!");
         showToast("Files split successfully! Click Download ZIP to save.", "success");
@@ -3122,7 +3131,9 @@ async function runRenameProcess() {
         await new Promise(r => setTimeout(r, 50));
 
         renGeneratedZipBlob = await zip.generateAsync({ type: "blob" });
-        renGeneratedZipName = `Renamed_Myntra_Sheets.zip`;
+        const renMethodInput = document.querySelector('input[name="ren-method"]:checked');
+        const isP2Method = renMethodInput ? (renMethodInput.value === "yes") : true;
+        renGeneratedZipName = isP2Method ? `myntra_order_rename_file.zip` : `myntra_tax_rename_file.zip`;
 
         updateRenProgress(100, "Success!");
         showToast("Files renamed successfully! Click Download ZIP to save.", "success");
@@ -3506,7 +3517,7 @@ async function runMergeProcess() {
         let isSingle = (mrgUniqueGroups.length === 1);
         if (!isSingle) {
             mrgGeneratedZipBlob = await zip.generateAsync({ type: "blob" });
-            mrgGeneratedZipName = "Merged_Myntra_Reports.zip";
+            mrgGeneratedZipName = "ajio_murge_file.zip";
         }
 
         updateMrgProgress(100, "Success!");
@@ -3957,7 +3968,11 @@ async function runErrorCheckProcess() {
             XLSX.utils.book_append_sheet(wbGroup, wsGroup, sheetName);
             const bufferGroup = XLSX.write(wbGroup, { bookType: 'xlsx', type: 'array' });
             const blobGroup = new Blob([bufferGroup], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-            zip.file(`${partyKey}-account center.xlsx`, blobGroup);
+            const groupFilename = `${partyKey}-account center.xlsx`;
+            zip.file(groupFilename, blobGroup);
+
+            // Register tracked error in database
+            registerTrackedError('myntra', groupFilename, partyKey, 'Price Dispute', rowsInGroup.length);
 
             // 2. Add to combined master workbook
             XLSX.utils.book_append_sheet(masterWb, wsGroup, sheetName);
@@ -3996,7 +4011,7 @@ async function runErrorCheckProcess() {
         
         // Save in state variables
         errGeneratedZipBlob = zipBlob;
-        errGeneratedZipName = `Myntra_Error_Dispute_Package_${timestamp}.zip`;
+        errGeneratedZipName = `myntra_price_dispute_bundle.zip`;
 
         updateErrProgress(100, "Success!");
         showToast(`ZIP created! Ready to download with ${partyKeysSorted.length} party files.`, "success");
@@ -5021,7 +5036,11 @@ async function runInvoiceErrorProcess() {
                 const groupBlob = new Blob([groupBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
                 
                 // Save directly in the ZIP root
-                zip.file(`${comboName}.xlsx`, groupBlob);
+                const groupFilename = `${comboName}.xlsx`;
+                zip.file(groupFilename, groupBlob);
+                
+                // Register tracked error in database
+                registerTrackedError('invoice', groupFilename, partyName, errorType, rows.length);
                 
                 // Append to Combined Workbook
                 XLSX.utils.book_append_sheet(combinedWb, ws, uniqueSheetName);
@@ -5117,7 +5136,7 @@ async function runInvoiceErrorProcess() {
         const zipBlob = await zip.generateAsync({ type: "blob" });
         
         invGeneratedZipBlob = zipBlob;
-        invGeneratedZipName = `Invoice_Error_Package_${origBaseName}.zip`;
+        invGeneratedZipName = `myntra_error-bundle.zip`;
         
         updateInvProgress(100, "Success!");
         showToast(`Invoice error package created successfully! Deleted ${lockedRowsCount} 'Invoice Locked' rows.`, "success");
@@ -5162,3 +5181,487 @@ function getUniqueSheetName(name, existingNames) {
         counter++;
     }
 }
+
+
+/* ==========================================================================
+   ERROR TRACKING DATABASE & DASHBOARD LOGIC (SHARED CLOUD / LOCAL FALLBACK)
+   ========================================================================== */
+
+function setupErrorTracker() {
+    const searchInput = document.getElementById('trackerSearchInput');
+    const statusFilter = document.getElementById('trackerStatusFilter');
+    const sourceFilter = document.getElementById('trackerSourceFilter');
+    const clearDbBtn = document.getElementById('clearTrackerDbBtn');
+
+    if (searchInput) {
+        searchInput.addEventListener('input', () => {
+            renderErrorTracker();
+        });
+    }
+    if (statusFilter) {
+        statusFilter.addEventListener('change', () => {
+            renderErrorTracker();
+        });
+    }
+    if (sourceFilter) {
+        sourceFilter.addEventListener('change', () => {
+            renderErrorTracker();
+        });
+    }
+    if (clearDbBtn) {
+        clearDbBtn.addEventListener('click', () => {
+            showCustomConfirm(
+                "Clear History",
+                "Are you sure you want to delete all tracked error dispute history from Google Sheets and localStorage? This will wipe all records permanently.",
+                async (confirmed) => {
+                    if (confirmed) {
+                        clearDbBtn.setAttribute('disabled', 'true');
+                        clearDbBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Clearing...';
+                        await clearTrackedErrorsDb();
+                        clearDbBtn.removeAttribute('disabled');
+                        clearDbBtn.innerHTML = '<i class="fa-solid fa-trash-can"></i> Clear History';
+                        renderErrorTracker();
+                    }
+                }
+            );
+        });
+    }
+    
+    // Check status initially
+    updateTrackerSyncBadge();
+}
+
+// Custom Confirmation Modal System
+function showCustomConfirm(title, message, callback) {
+    let backdrop = document.getElementById('customConfirmBackdrop');
+    if (!backdrop) {
+        backdrop = document.createElement('div');
+        backdrop.id = 'customConfirmBackdrop';
+        backdrop.className = 'custom-modal-backdrop';
+        backdrop.innerHTML = `
+            <div class="custom-modal-card" style="border: 1px solid rgba(220, 38, 38, 0.15); box-shadow: 0 20px 25px -5px rgba(220, 38, 38, 0.05); padding: 1.5rem; background: white; border-radius: 12px;">
+                <div class="custom-modal-header" style="display: flex; gap: 0.75rem; align-items: center; margin-bottom: 1rem;">
+                    <span class="custom-modal-icon error" style="background: rgba(239, 68, 68, 0.1); color: #ef4444; display: flex; align-items: center; justify-content: center; width: 38px; height: 38px; border-radius: 50%; font-size: 1.25rem;"><i class="fa-solid fa-triangle-exclamation"></i></span>
+                    <h3 class="custom-modal-title" id="customConfirmTitle" style="font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 1.25rem; color: #1f2937; margin: 0;">Confirm Action</h3>
+                </div>
+                <div class="custom-modal-body" id="customConfirmBody" style="font-family: 'Plus Jakarta Sans', sans-serif; font-size: 0.95rem; color: #4b5563; line-height: 1.6; margin-bottom: 1.5rem; white-space: pre-line;"></div>
+                <div class="custom-modal-footer" style="display: flex; gap: 0.5rem; justify-content: flex-end;">
+                    <button class="btn btn-secondary" id="customConfirmCancelBtn" style="min-width: 90px; height: 38px; border-radius: 8px; font-weight: 600; font-size: 0.85rem; cursor: pointer; transition: all 0.2s ease;">Cancel</button>
+                    <button class="btn btn-primary" id="customConfirmOkBtn" style="background: linear-gradient(135deg, #ef4444, #dc2626); border-color: #dc2626; color: white; min-width: 90px; height: 38px; border-radius: 8px; font-weight: 600; font-size: 0.85rem; cursor: pointer; transition: all 0.2s ease;">Confirm</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(backdrop);
+    }
+
+    const titleEl = document.getElementById('customConfirmTitle');
+    const bodyEl = document.getElementById('customConfirmBody');
+    const okBtn = document.getElementById('customConfirmOkBtn');
+    const cancelBtn = document.getElementById('customConfirmCancelBtn');
+
+    titleEl.innerText = title;
+    bodyEl.innerText = message;
+
+    // Reset event listeners by cloning buttons
+    const newOkBtn = okBtn.cloneNode(true);
+    const newCancelBtn = cancelBtn.cloneNode(true);
+    okBtn.parentNode.replaceChild(newOkBtn, okBtn);
+    cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
+
+    newOkBtn.addEventListener('click', () => {
+        backdrop.classList.remove('show');
+        callback(true);
+    });
+
+    const closeConfirm = () => {
+        backdrop.classList.remove('show');
+        callback(false);
+    };
+
+    newCancelBtn.addEventListener('click', closeConfirm);
+    backdrop.addEventListener('click', (e) => {
+        if (e.target === backdrop) {
+            closeConfirm();
+        }
+    });
+
+    // Show modal
+    setTimeout(() => {
+        backdrop.classList.add('show');
+    }, 50);
+}
+
+// Helper: format sync status badge
+function updateTrackerSyncBadge() {
+    const badge = document.getElementById('trackerSyncBadge');
+    if (!badge) return;
+    if (trackerSyncStatus === 'online') {
+        badge.style.background = 'rgba(5, 150, 105, 0.1)';
+        badge.style.color = 'var(--color-success)';
+        badge.style.borderColor = 'rgba(5, 150, 105, 0.2)';
+        badge.innerText = 'Google Sheets Sync Active';
+    } else {
+        badge.style.background = 'rgba(245, 158, 11, 0.1)';
+        badge.style.color = '#d97706';
+        badge.style.borderColor = 'rgba(245, 158, 11, 0.2)';
+        badge.innerText = 'Offline Backup Mode';
+    }
+}
+
+// 1. Fetch error records (remote first, local fallback)
+async function fetchTrackedErrors() {
+    try {
+        if (appsScriptUrl) {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 6000); // 6 sec timeout
+            
+            const response = await fetch(`${appsScriptUrl}?action=getTrackedErrors`, { signal: controller.signal });
+            clearTimeout(timeoutId);
+            const result = await response.json();
+            if (result && result.status === 'success') {
+                trackerSyncStatus = 'online';
+                updateTrackerSyncBadge();
+                // Cache locally
+                localStorage.setItem('trackedErrors', JSON.stringify(result.errors || []));
+                return result.errors || [];
+            }
+        }
+    } catch (e) {
+        console.warn("Google Sheets Error Tracker connection failed, using local storage:", e);
+    }
+    
+    trackerSyncStatus = 'offline';
+    updateTrackerSyncBadge();
+    
+    // Local fallback
+    let records = JSON.parse(localStorage.getItem('trackedErrors') || '[]');
+    const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    records = records.filter(r => (now - new Date(r.createdDate).getTime()) < THIRTY_DAYS_MS);
+    localStorage.setItem('trackedErrors', JSON.stringify(records));
+    return records;
+}
+
+// 2. Register a new error entry (sends to Google Sheets in bg, duplicates to local)
+async function registerTrackedError(type, fileName, partyOrWh, errorType, rowsCount) {
+    const newRecord = {
+        id: 'err-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9),
+        type: type, // 'myntra' or 'invoice'
+        fileName: fileName,
+        partyOrWh: partyOrWh,
+        errorType: errorType,
+        rowsCount: rowsCount,
+        createdDate: new Date().toISOString(),
+        solved: false,
+        solvedDate: ''
+    };
+
+    // Local duplicate immediately (ensures instant load / offline fallback)
+    let records = JSON.parse(localStorage.getItem('trackedErrors') || '[]');
+    records.push(newRecord);
+    localStorage.setItem('trackedErrors', JSON.stringify(records));
+
+    try {
+        if (appsScriptUrl) {
+            const response = await fetch(`${appsScriptUrl}?action=addTrackedError`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain' }, // Avoid CORS preflight on Apps Script
+                body: JSON.stringify(newRecord)
+            });
+            const result = await response.json();
+            if (result && result.status === 'success') {
+                trackerSyncStatus = 'online';
+                updateTrackerSyncBadge();
+            }
+        }
+    } catch (e) {
+        console.warn("Failed to write tracked error to Google Sheets:", e);
+    }
+}
+
+// 3. Mark an error as solved
+async function solveTrackedError(id) {
+    const solvedDate = new Date().toISOString();
+
+    // Update locally immediately
+    let records = JSON.parse(localStorage.getItem('trackedErrors') || '[]');
+    const idx = records.findIndex(r => r.id === id);
+    if (idx !== -1) {
+        records[idx].solved = true;
+        records[idx].solvedDate = solvedDate;
+        localStorage.setItem('trackedErrors', JSON.stringify(records));
+    }
+
+    try {
+        if (appsScriptUrl) {
+            const response = await fetch(`${appsScriptUrl}?action=solveTrackedError`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain' },
+                body: JSON.stringify({
+                    id: id,
+                    solvedDate: solvedDate
+                })
+            });
+            const result = await response.json();
+            if (result && result.status === 'success') {
+                trackerSyncStatus = 'online';
+                updateTrackerSyncBadge();
+            }
+        }
+    } catch (e) {
+        console.warn("Failed to solve tracked error on Google Sheets:", e);
+    }
+}
+
+// 4. Clear all tracked errors database
+async function clearTrackedErrorsDb() {
+    localStorage.removeItem('trackedErrors');
+
+    try {
+        if (appsScriptUrl) {
+            const response = await fetch(`${appsScriptUrl}?action=clearTrackedErrors`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain' }
+            });
+            const result = await response.json();
+            if (result && result.status === 'success') {
+                trackerSyncStatus = 'online';
+                updateTrackerSyncBadge();
+            }
+        }
+    } catch (e) {
+        console.warn("Failed to clear tracked errors on Google Sheets:", e);
+    }
+}
+
+// 4.5. Delete a specific error entry from database
+async function deleteTrackedError(id) {
+    // Update locally immediately
+    let records = JSON.parse(localStorage.getItem('trackedErrors') || '[]');
+    records = records.filter(r => r.id !== id);
+    localStorage.setItem('trackedErrors', JSON.stringify(records));
+
+    try {
+        if (appsScriptUrl) {
+            const response = await fetch(`${appsScriptUrl}?action=deleteTrackedError`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain' },
+                body: JSON.stringify({ id: id })
+            });
+            const result = await response.json();
+            if (result && result.status === 'success') {
+                trackerSyncStatus = 'online';
+                updateTrackerSyncBadge();
+            }
+        }
+    } catch (e) {
+        console.warn("Failed to delete tracked error on Google Sheets:", e);
+    }
+}
+
+// 5. Render Tracker Dashboard
+async function renderErrorTracker() {
+    const statsActive = document.getElementById('statsActiveErrors');
+    const statsSolved = document.getElementById('statsSolvedErrors');
+    const statsTotal = document.getElementById('statsTotalErrors');
+    const container = document.getElementById('trackerTableContainer');
+    const searchInput = document.getElementById('trackerSearchInput');
+    const statusFilter = document.getElementById('trackerStatusFilter');
+    const sourceFilter = document.getElementById('trackerSourceFilter');
+
+    if (!container) return;
+
+    // Display spinner while loading
+    container.innerHTML = `
+        <div class="empty-state">
+            <div class="empty-icon">
+                <svg class="fa-spin" viewBox="0 0 24 24" width="40" height="40" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="color: var(--primary);"><line x1="12" y1="2" x2="12" y2="6"></line><line x1="12" y1="18" x2="12" y2="22"></line><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line><line x1="2" y1="12" x2="6" y2="12"></line><line x1="18" y1="12" x2="22" y2="12"></line><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line></svg>
+            </div>
+            <p>Loading tracked errors list from database...</p>
+        </div>
+    `;
+
+    const errors = await fetchTrackedErrors();
+    
+    // Calculate counts
+    const activeCount = errors.filter(e => !e.solved).length;
+    const solvedCount = errors.filter(e => e.solved).length;
+    const totalCount = errors.length;
+
+    if (statsActive) statsActive.innerText = activeCount;
+    if (statsSolved) statsSolved.innerText = solvedCount;
+    if (statsTotal) statsTotal.innerText = totalCount;
+
+    // Apply filters
+    const query = searchInput ? searchInput.value.trim().toLowerCase() : '';
+    const statusVal = statusFilter ? statusFilter.value : 'all';
+    const sourceVal = sourceFilter ? sourceFilter.value : 'all';
+
+    const filtered = errors.filter(item => {
+        // Search query matches fileName, partyOrWh, or errorType
+        const matchesQuery = !query || 
+            String(item.fileName).toLowerCase().includes(query) ||
+            String(item.partyOrWh).toLowerCase().includes(query) ||
+            String(item.errorType).toLowerCase().includes(query);
+        
+        // Status match
+        const matchesStatus = statusVal === 'all' || 
+            (statusVal === 'active' && !item.solved) ||
+            (statusVal === 'solved' && item.solved);
+        
+        // Source match
+        const matchesSource = sourceVal === 'all' || item.type === sourceVal;
+
+        return matchesQuery && matchesStatus && matchesSource;
+    });
+
+    // Sort: active (unsolved) first, then by date descending
+    filtered.sort((a, b) => {
+        if (a.solved !== b.solved) {
+            return a.solved ? 1 : -1;
+        }
+        return new Date(b.createdDate) - new Date(a.createdDate);
+    });
+
+    if (filtered.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-icon">
+                    <svg viewBox="0 0 24 24" width="40" height="40" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="color: var(--color-od);"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+                </div>
+                <p>No tracked errors match your criteria.</p>
+            </div>
+        `;
+        return;
+    }
+
+    // Render Table
+    const table = document.createElement('table');
+    table.className = 'preview-table';
+    table.style.width = '100%';
+    table.style.borderCollapse = 'collapse';
+    table.style.fontSize = '0.85rem';
+    table.style.textAlign = 'left';
+
+    table.innerHTML = `
+        <thead>
+            <tr style="border-bottom: 2px solid var(--border-color); color: var(--text-primary);">
+                <th style="padding: 0.75rem; font-weight: 700; font-size: 0.75rem; text-transform: uppercase;">Source</th>
+                <th style="padding: 0.75rem; font-weight: 700; font-size: 0.75rem; text-transform: uppercase;">File / Error Details</th>
+                <th style="padding: 0.75rem; font-weight: 700; font-size: 0.75rem; text-transform: uppercase;">Party / Wh</th>
+                <th style="padding: 0.75rem; font-weight: 700; font-size: 0.75rem; text-transform: uppercase; text-align: right;">Rows</th>
+                <th style="padding: 0.75rem; font-weight: 700; font-size: 0.75rem; text-transform: uppercase;">Date Added</th>
+                <th style="padding: 0.75rem; font-weight: 700; font-size: 0.75rem; text-transform: uppercase;">Days Active</th>
+                <th style="padding: 0.75rem; font-weight: 700; font-size: 0.75rem; text-transform: uppercase; text-align: center;">Status</th>
+                <th style="padding: 0.75rem; font-weight: 700; font-size: 0.75rem; text-transform: uppercase; text-align: center;">Action</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    `;
+
+    const tbody = table.querySelector('tbody');
+
+    filtered.forEach((record, index) => {
+        const tr = document.createElement('tr');
+        tr.className = `row-color-${index % 7}`;
+        tr.style.borderBottom = '1px solid var(--border-color)';
+        
+        // Source badge
+        const isMyntra = record.type === 'myntra';
+        const sourceBadge = isMyntra 
+            ? `<span style="background: rgba(0, 150, 199, 0.08); color: #0096c7; border: 1px solid rgba(0, 150, 199, 0.15); padding: 0.2rem 0.45rem; border-radius: 6px; font-size: 0.75rem; font-weight: 600;">MYNTRA ERROR</span>`
+            : `<span style="background: rgba(123, 44, 191, 0.08); color: var(--primary); border: 1px solid rgba(123, 44, 191, 0.15); padding: 0.2rem 0.45rem; border-radius: 6px; font-size: 0.75rem; font-weight: 600;">INVOICE</span>`;
+
+        // Error Type details
+        const detailHtml = `
+            <div style="font-weight: 600; color: var(--text-primary);">${record.fileName}</div>
+            <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.1rem;">${record.errorType}</div>
+        `;
+
+        // Day counter logic
+        const createdTime = new Date(record.createdDate).getTime();
+        const endTime = record.solved ? new Date(record.solvedDate).getTime() : Date.now();
+        const diffDays = Math.max(0, Math.floor((endTime - createdTime) / (1000 * 60 * 60 * 24)));
+        const daysText = record.solved 
+            ? `<span style="color: var(--text-secondary); font-size: 0.8rem;">Solved in ${diffDays} day${diffDays === 1 ? '' : 's'}</span>`
+            : `<span style="color: #ef4444; font-weight: 700; font-size: 0.85rem; display: flex; align-items: center; gap: 0.25rem;"><svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none" style="margin-right:2px;"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg> ${diffDays} Day${diffDays === 1 ? '' : 's'}</span>`;
+
+        // Date Added formatted cleanly
+        const addedDateFormatted = new Date(record.createdDate).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+
+        // Status badge
+        const statusBadge = record.solved
+            ? `<span style="background: rgba(16, 185, 129, 0.1); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.2); padding: 0.25rem 0.5rem; border-radius: 20px; font-weight: 600; font-size: 0.75rem; display: inline-flex; align-items: center; gap: 0.3rem;"><svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none" style="margin-right:2px;"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg> Solved</span>`
+            : `<span style="background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.2); padding: 0.25rem 0.5rem; border-radius: 20px; font-weight: 600; font-size: 0.75rem; display: inline-flex; align-items: center; gap: 0.3rem;"><svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none" style="margin-right:2px;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg> Active</span>`;
+
+        // Action buttons (Solve + Delete)
+        const actionHtml = record.solved
+            ? `<div style="display: flex; gap: 0.4rem; justify-content: center; align-items: center;">
+                   <span style="font-size: 0.75rem; color: var(--text-secondary); font-style: italic; margin-right: 0.3rem;">Solved</span>
+                   <button class="btn delete-tracker-btn" data-id="${record.id}" style="padding: 0.35rem 0.6rem; font-size: 0.75rem; border-radius: 6px; background: rgba(239, 68, 68, 0.08); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.15); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; border: none;"><svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2" fill="none"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg></button>
+               </div>`
+            : `<div style="display: flex; gap: 0.4rem; justify-content: center; align-items: center;">
+                   <button class="btn solve-tracker-btn" data-id="${record.id}" style="padding: 0.35rem 0.7rem; font-size: 0.75rem; border-radius: 6px; display: inline-flex; align-items: center; gap: 0.3rem; background: #10b981; color: white; cursor: pointer; font-weight: 600; border: none; box-shadow: 0 2px 6px rgba(16, 185, 129, 0.25);"><svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none" style="margin-right:2px;"><polyline points="20 6 9 17 4 12"></polyline></svg> Solve</button>
+                   <button class="btn delete-tracker-btn" data-id="${record.id}" style="padding: 0.35rem 0.6rem; font-size: 0.75rem; border-radius: 6px; background: rgba(239, 68, 68, 0.08); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.15); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; border: none;"><svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg></button>
+               </div>`;
+
+        tr.innerHTML = `
+            <td style="padding: 0.75rem; vertical-align: middle;">${sourceBadge}</td>
+            <td style="padding: 0.75rem; vertical-align: middle;">${detailHtml}</td>
+            <td style="padding: 0.75rem; vertical-align: middle; font-weight: 500; color: var(--text-secondary);">${record.partyOrWh}</td>
+            <td style="padding: 0.75rem; vertical-align: middle; text-align: right; font-weight: 600; color: var(--text-secondary);">${record.rowsCount}</td>
+            <td style="padding: 0.75rem; vertical-align: middle; color: var(--text-secondary);">${addedDateFormatted}</td>
+            <td style="padding: 0.75rem; vertical-align: middle;">${daysText}</td>
+            <td style="padding: 0.75rem; vertical-align: middle; text-align: center;">${statusBadge}</td>
+            <td style="padding: 0.75rem; vertical-align: middle; text-align: center;">${actionHtml}</td>
+        `;
+
+        // Event listener for solve button
+        const solveBtn = tr.querySelector('.solve-tracker-btn');
+        if (solveBtn) {
+            solveBtn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                solveBtn.setAttribute('disabled', 'true');
+                solveBtn.innerHTML = '<svg class="fa-spin" viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none"><line x1="12" y1="2" x2="12" y2="6"></line><line x1="12" y1="18" x2="12" y2="22"></line><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line><line x1="2" y1="12" x2="6" y2="12"></line><line x1="18" y1="12" x2="22" y2="12"></line><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line></svg>';
+                await solveTrackedError(record.id);
+                renderErrorTracker();
+            });
+        }
+
+        // Event listener for delete button
+        const deleteBtn = tr.querySelector('.delete-tracker-btn');
+        if (deleteBtn) {
+            deleteBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                showCustomConfirm(
+                    "Delete Record",
+                    `Are you sure you want to delete the tracked error record for "${record.fileName}"? This action cannot be undone.`,
+                    async (confirmed) => {
+                        if (confirmed) {
+                            deleteBtn.setAttribute('disabled', 'true');
+                            deleteBtn.innerHTML = '<svg class="fa-spin" viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none"><line x1="12" y1="2" x2="12" y2="6"></line><line x1="12" y1="18" x2="12" y2="22"></line><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line><line x1="2" y1="12" x2="6" y2="12"></line><line x1="18" y1="12" x2="22" y2="12"></line><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line></svg>';
+                            await deleteTrackedError(record.id);
+                            renderErrorTracker();
+                        }
+                    }
+                );
+            });
+        }
+
+        tbody.appendChild(tr);
+    });
+
+    container.innerHTML = '';
+    container.appendChild(table);
+}
+
+// Expose functions globally for debugging/console testing
+window.errorTracker = {
+    fetch: fetchTrackedErrors,
+    register: registerTrackedError,
+    solve: solveTrackedError,
+    delete: deleteTrackedError,
+    clear: clearTrackedErrorsDb,
+    render: renderErrorTracker
+};
+
