@@ -1446,3 +1446,75 @@ input:checked + .slider:before {
     gap: 0.5rem;
     justify-content: flex-end;
 }
+
+/* ==========================================================================
+   SUB TAB STYLES FOR FOLDER CREATE
+   ========================================================================== */
+.sub-tab-btn.active {
+    background: white !important;
+    color: var(--primary) !important;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+    border: 1px solid rgba(124, 58, 237, 0.08) !important;
+}
+
+.sub-tab-btn:hover:not(.active) {
+    background: rgba(0, 0, 0, 0.04) !important;
+    color: var(--text-primary) !important;
+}
+
+.fld-file-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: rgba(124, 58, 237, 0.02);
+    border: 1px solid rgba(0, 0, 0, 0.04);
+    padding: 0.45rem 0.65rem;
+    border-radius: 8px;
+    transition: var(--transition-smooth);
+}
+
+.fld-file-item:hover {
+    background: rgba(124, 58, 237, 0.04);
+    border-color: rgba(124, 58, 237, 0.1);
+}
+
+.fld-file-details {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 80%;
+}
+
+.fld-file-name {
+    font-weight: 500;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.fld-file-size {
+    font-size: 0.68rem;
+    color: var(--text-muted);
+    margin-left: 0.25rem;
+}
+
+.btn-remove-fld-file {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 2px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: var(--transition-smooth);
+}
+
+.btn-remove-fld-file:hover {
+    color: var(--color-danger);
+}
+

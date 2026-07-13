@@ -11,6 +11,7 @@ let uploadedZipBaseName = ""; // Tracks the original uploaded ZIP file name for 
 let fldUploadedFiles = [];
 let fldGeneratedZipBlob = null;
 let fldGeneratedZipName = "";
+let fldMode = 'files'; // 'files' or 'folders'
 
 // Invoice Error state variables
 let invUploadedFiles = [];
@@ -4240,29 +4241,372 @@ function parseCellAsDate(val) {
 // FOLDER CREATE TAB LOGIC
 // ==========================
 
-function setupFolderCreate() {
-    const fldDropzone = document.getElementById('fld-dropzone');
-    const fldFileInput = document.getElementById('fld-file-input');
-    const btnFldSelectFiles = document.getElementById('btn-fld-select-files');
-    const btnFldRun = document.getElementById('btn-fld-run');
+function formatBytes(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+// Helper to recursively traverse dragged folders and get files
+async function getFilesFromDataTransfer(dataTransfer) {
+    console.log("getFilesFromDataTransfer: Started traversal. dataTransfer =", dataTransfer);
+    const files = [];
     
-    if (!fldDropzone || !fldFileInput || !btnFldRun) return;
+    // Helper to read directory entries
+    const readDirectory = (dirEntry) => {
+        return new Promise((resolve) => {
+            const reader = dirEntry.createReader();
+            const allEntries = [];
+            
+            const readEntries = () => {
+                reader.readEntries((entries) => {
+                    if (entries.length === 0) {
+                        resolve(allEntries);
+                    } else {
+                        allEntries.push(...entries);
+                        readEntries();
+                    }
+                }, () => resolve([]));
+            };
+            readEntries();
+        });
+    };
     
-    // Select Files click trigger
-    if (btnFldSelectFiles) {
-        btnFldSelectFiles.addEventListener('click', (e) => {
-            e.stopPropagation();
-            fldFileInput.click();
+    // Helper to get file from file entry
+    const getFile = (fileEntry) => {
+        return new Promise((resolve) => {
+            fileEntry.file((file) => resolve(file), () => resolve(null));
+        });
+    };
+    
+    // Recursive traverse
+    const traverse = async (entry, path = "") => {
+        console.log("Traversing entry:", entry.name, "isFile:", entry.isFile, "isDirectory:", entry.isDirectory, "currentPath:", path);
+        if (entry.isFile) {
+            const file = await getFile(entry);
+            if (file) {
+                file.customRelativePath = path ? `${path}/${file.name}` : file.name;
+                console.log("Found file entry:", file.name, "customRelativePath:", file.customRelativePath);
+                files.push(file);
+            }
+        } else if (entry.isDirectory) {
+            const entries = await readDirectory(entry);
+            const nextPath = path ? `${path}/${entry.name}` : entry.name;
+            console.log("Found directory entry:", entry.name, "contains entries count:", entries.length, "nextPath:", nextPath);
+            for (const subEntry of entries) {
+                await traverse(subEntry, nextPath);
+            }
+        }
+    };
+    
+    const items = dataTransfer.items;
+    const entries = [];
+    
+    if (items) {
+        console.log("dataTransfer.items found. count =", items.length);
+        for (let i = 0; i < items.length; i++) {
+            try {
+                const entry = items[i].webkitGetAsEntry();
+                console.log("Item index", i, "entryName =", entry ? entry.name : "null");
+                if (entry) {
+                    entries.push(entry);
+                }
+            } catch (err) {
+                console.warn("Error getting webkitGetAsEntry at index", i, err);
+            }
+        }
+    }
+    
+    if (entries.length > 0) {
+        console.log("Synchronously extracted entries count =", entries.length, ". Starting async traversal...");
+        for (const entry of entries) {
+            await traverse(entry);
+        }
+    } else {
+        console.log("No webkitGetAsEntry entries found or items was empty. Falling back to dataTransfer.files...");
+        const list = Array.from(dataTransfer.files);
+        list.forEach(file => {
+            file.customRelativePath = file.webkitRelativePath || file.name;
+            files.push(file);
         });
     }
     
-    fldDropzone.addEventListener('click', () => {
-        fldFileInput.click();
+    console.log("getFilesFromDataTransfer finished. Total files parsed =", files.length);
+    return files;
+}
+
+function switchFldMode(mode) {
+    if (fldMode === mode) return;
+    fldMode = mode;
+    
+    // Clear list
+    fldUploadedFiles = [];
+    resetFolderCreateButtonState();
+    
+    const fldFileInput = document.getElementById('fld-file-input');
+    const fldFolderInput = document.getElementById('fld-folder-input');
+    const fldUploadTitle = document.getElementById('fld-upload-title');
+    const fldFileSupportText = document.getElementById('fld-file-support-text');
+    const fldModeFilesBtn = document.getElementById('fld-mode-files-btn');
+    const fldModeFoldersBtn = document.getElementById('fld-mode-folders-btn');
+    
+    // Clear preview table and hide it
+    const fldEmptyState = document.getElementById('fld-empty-state');
+    const fldTableContainer = document.getElementById('fld-table-container');
+    const fldPreviewTbody = document.getElementById('fld-preview-tbody');
+    const fldFileCount = document.getElementById('fld-file-count');
+    const fldProgress = document.getElementById('fld-progress');
+    const btnFldRun = document.getElementById('btn-fld-run');
+    
+    if (fldEmptyState) fldEmptyState.classList.remove('hidden');
+    if (fldTableContainer) fldTableContainer.classList.add('hidden');
+    if (fldPreviewTbody) fldPreviewTbody.innerHTML = '';
+    if (fldFileCount) fldFileCount.textContent = '0 files loaded';
+    if (fldProgress) fldProgress.classList.add('hidden');
+    if (btnFldRun) btnFldRun.classList.add('hidden');
+    
+    // Update active tab buttons
+    if (fldModeFilesBtn && fldModeFoldersBtn) {
+        if (mode === 'files') {
+            fldModeFilesBtn.classList.add('active');
+            fldModeFoldersBtn.classList.remove('active');
+        } else {
+            fldModeFoldersBtn.classList.add('active');
+            fldModeFilesBtn.classList.remove('active');
+        }
+    }
+    
+    // Adjust file/folder input visibility and labels
+    if (mode === 'files') {
+        if (fldFileInput) fldFileInput.style.display = 'block';
+        if (fldFolderInput) fldFolderInput.style.display = 'none';
+        if (fldUploadTitle) fldUploadTitle.textContent = "Upload Files to Group";
+        if (fldFileSupportText) fldFileSupportText.textContent = "Supports .xlsx, .xls, .csv files";
+        const selectBtn = document.getElementById('btn-fld-select-files');
+        if (selectBtn) selectBtn.textContent = "Select Files";
+        const fldFileLabel = document.getElementById('fld-file-label');
+        if (fldFileLabel) fldFileLabel.textContent = "Drag & Drop files here";
+    } else {
+        if (fldFileInput) fldFileInput.style.display = 'none';
+        if (fldFolderInput) fldFolderInput.style.display = 'block';
+        if (fldUploadTitle) fldUploadTitle.textContent = "Upload Folders Directly";
+        if (fldFileSupportText) fldFileSupportText.textContent = "Select multiple folders to zip & summarize";
+        const selectBtn = document.getElementById('btn-fld-select-files');
+        if (selectBtn) selectBtn.textContent = "Select Folder";
+        const fldFileLabel = document.getElementById('fld-file-label');
+        if (fldFileLabel) fldFileLabel.textContent = "Drag & Drop folders here";
+    }
+    
+    updateFldSelectedUI();
+}
+
+function updateFldSelectedUI() {
+    const fldSelectedCard = document.getElementById('fld-selected-card');
+    const fldSelectedCount = document.getElementById('fld-selected-count');
+    const fldSelectedList = document.getElementById('fld-selected-list');
+    
+    if (!fldSelectedCard || !fldSelectedCount || !fldSelectedList) return;
+    
+    if (fldUploadedFiles.length > 0) {
+        fldSelectedCard.style.display = 'flex';
+        fldSelectedCount.textContent = fldUploadedFiles.length;
+        fldSelectedList.innerHTML = '';
+        
+        fldUploadedFiles.forEach((fileData, index) => {
+            const item = document.createElement('div');
+            item.className = 'fld-file-item';
+            
+            const details = document.createElement('div');
+            details.className = 'fld-file-details';
+            
+            const fileIcon = document.createElement('span');
+            fileIcon.className = 'file-icon';
+            fileIcon.innerHTML = `<svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="color: var(--text-secondary);"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>`;
+            
+            const nameSpan = document.createElement('span');
+            nameSpan.className = 'fld-file-name';
+            const relativePath = fileData.relativePath || fileData.name;
+            nameSpan.textContent = relativePath;
+            
+            const sizeSpan = document.createElement('span');
+            sizeSpan.className = 'fld-file-size';
+            sizeSpan.textContent = fileData.fileObj ? `(${formatBytes(fileData.fileObj.size)})` : '';
+            
+            details.appendChild(fileIcon);
+            details.appendChild(nameSpan);
+            details.appendChild(sizeSpan);
+            
+            const removeBtn = document.createElement('button');
+            removeBtn.className = 'btn-remove-fld-file';
+            removeBtn.innerHTML = `<svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`;
+            removeBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                fldUploadedFiles.splice(index, 1);
+                updateFldSelectedUI();
+                recalculateFldGroupsAndPreview();
+            });
+            
+            item.appendChild(details);
+            item.appendChild(removeBtn);
+            fldSelectedList.appendChild(item);
+        });
+    } else {
+        fldSelectedCard.style.display = 'none';
+        fldSelectedCount.textContent = '0';
+        fldSelectedList.innerHTML = '';
+    }
+}
+
+function recalculateFldGroupsAndPreview() {
+    const fldEmptyState = document.getElementById('fld-empty-state');
+    const fldTableContainer = document.getElementById('fld-table-container');
+    const fldPreviewTbody = document.getElementById('fld-preview-tbody');
+    const fldFileCount = document.getElementById('fld-file-count');
+    const btnFldRun = document.getElementById('btn-fld-run');
+    
+    if (fldUploadedFiles.length === 0) {
+        if (fldEmptyState) fldEmptyState.classList.remove('hidden');
+        if (fldTableContainer) fldTableContainer.classList.add('hidden');
+        if (fldFileCount) fldFileCount.textContent = '0 files loaded';
+        if (btnFldRun) btnFldRun.classList.add('hidden');
+        return;
+    }
+    
+    if (fldFileCount) {
+        fldFileCount.textContent = `${fldUploadedFiles.length} files loaded`;
+    }
+    
+    const groups = new Map();
+    
+    if (fldMode === 'files') {
+        fldUploadedFiles.forEach(fileData => {
+            const name = fileData.name;
+            if (name.includes("-")) {
+                const prefix = name.split("-")[0].trim();
+                if (prefix !== "") {
+                    if (!groups.has(prefix)) {
+                        groups.set(prefix, []);
+                    }
+                    groups.get(prefix).push(fileData);
+                }
+            }
+        });
+    } else {
+        fldUploadedFiles.forEach(fileData => {
+            const folderName = fileData.folderName;
+            if (folderName) {
+                if (!groups.has(folderName)) {
+                    groups.set(folderName, []);
+                }
+                groups.get(folderName).push(fileData);
+            }
+        });
+    }
+    
+    let html = "";
+    let index = 1;
+    const sortedPrefixes = Array.from(groups.keys()).sort();
+    
+    sortedPrefixes.forEach(prefix => {
+        const filesInGroup = groups.get(prefix);
+        const count = filesInGroup.length;
+        const missingCount = count < 3 ? (3 - count) : 0;
+        
+        let statusBadge = "";
+        if (count >= 3) {
+            statusBadge = `<span class="badge success" style="background: rgba(16, 185, 129, 0.15); color: #10b981; padding: 2px 8px; border-radius: 4px; font-weight: 500; font-size: 0.7rem;">3+ Files (Complete)</span>`;
+        } else {
+            statusBadge = `<span class="badge danger" style="background: rgba(239, 68, 68, 0.15); color: #ef4444; padding: 2px 8px; border-radius: 4px; font-weight: 500; font-size: 0.7rem;">${count} Files (${missingCount} Missing)</span>`;
+        }
+        
+        const filesStr = filesInGroup.map(f => f.name).join(", ");
+        
+        html += `
+            <tr>
+                <td>${index++}</td>
+                <td style="font-weight: 600;">${prefix}</td>
+                <td>${count}</td>
+                <td>${statusBadge}</td>
+                <td style="max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${filesStr}">${filesStr}</td>
+            </tr>
+        `;
+    });
+    
+    if (fldPreviewTbody) {
+        fldPreviewTbody.innerHTML = html;
+    }
+    
+    if (fldEmptyState) fldEmptyState.classList.add('hidden');
+    if (fldTableContainer) fldTableContainer.classList.remove('hidden');
+    if (btnFldRun) btnFldRun.classList.remove('hidden');
+}
+
+function setupFolderCreate() {
+    const fldDropzone = document.getElementById('fld-dropzone');
+    const fldFileInput = document.getElementById('fld-file-input');
+    const fldFolderInput = document.getElementById('fld-folder-input');
+    const btnFldSelectFiles = document.getElementById('btn-fld-select-files');
+    const btnFldRun = document.getElementById('btn-fld-run');
+    const btnFldClear = document.getElementById('btn-fld-clear');
+    
+    const fldModeFilesBtn = document.getElementById('fld-mode-files-btn');
+    const fldModeFoldersBtn = document.getElementById('fld-mode-folders-btn');
+    
+    if (!fldDropzone || !fldFileInput || !btnFldRun) return;
+    
+    // Switch buttons setup
+    if (fldModeFilesBtn) {
+        fldModeFilesBtn.addEventListener('click', () => switchFldMode('files'));
+    }
+    if (fldModeFoldersBtn) {
+        fldModeFoldersBtn.addEventListener('click', () => switchFldMode('folders'));
+    }
+    
+    // Clear button setup
+    if (btnFldClear) {
+        btnFldClear.addEventListener('click', () => {
+            fldUploadedFiles = [];
+            if (fldFileInput) fldFileInput.value = '';
+            if (fldFolderInput) fldFolderInput.value = '';
+            resetFolderCreateButtonState();
+            updateFldSelectedUI();
+            recalculateFldGroupsAndPreview();
+            showToast("Cleared selected files list", "success");
+        });
+    }
+    
+    // Select Files/Folder click trigger
+    if (btnFldSelectFiles) {
+        btnFldSelectFiles.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (fldMode === 'files') {
+                fldFileInput.click();
+            } else {
+                if (fldFolderInput) fldFolderInput.click();
+            }
+        });
+    }
+    
+    fldDropzone.addEventListener('click', (e) => {
+        if (e.target.closest('#btn-fld-select-files')) return;
+        if (fldMode === 'files') {
+            fldFileInput.click();
+        } else {
+            if (fldFolderInput) fldFolderInput.click();
+        }
     });
     
     fldFileInput.addEventListener('change', (e) => {
         handleFldFileSelection(e.target.files);
     });
+    
+    if (fldFolderInput) {
+        fldFolderInput.addEventListener('change', (e) => {
+            handleFldFileSelection(e.target.files);
+        });
+    }
     
     // Drag & Drop
     fldDropzone.addEventListener('dragover', (e) => {
@@ -4274,11 +4618,21 @@ function setupFolderCreate() {
         fldDropzone.classList.remove('dragover');
     });
     
-    fldDropzone.addEventListener('drop', (e) => {
+    fldDropzone.addEventListener('drop', async (e) => {
         e.preventDefault();
         fldDropzone.classList.remove('dragover');
-        if (e.dataTransfer.files.length > 0) {
-            handleFldFileSelection(e.dataTransfer.files);
+        
+        let files = [];
+        if (fldMode === 'files') {
+            if (e.dataTransfer.files.length > 0) {
+                files = Array.from(e.dataTransfer.files);
+            }
+        } else {
+            files = await getFilesFromDataTransfer(e.dataTransfer);
+        }
+        
+        if (files.length > 0) {
+            handleFldFileSelection(files);
         }
     });
     
@@ -4303,7 +4657,11 @@ function resetFolderCreateButtonState() {
     
     const fldFileLabel = document.getElementById('fld-file-label');
     if (fldFileLabel) {
-        fldFileLabel.textContent = "Drag & Drop files here";
+        if (fldMode === 'files') {
+            fldFileLabel.textContent = "Drag & Drop files here";
+        } else {
+            fldFileLabel.textContent = "Drag & Drop folders here";
+        }
     }
 }
 
@@ -4315,22 +4673,15 @@ async function handleFldFileSelection(files) {
     const fldProgressPercent = document.getElementById('fld-progress-percent');
     const fldProgressText = document.getElementById('fld-progress-text');
     const fldProgressFill = document.getElementById('fld-progress-fill');
-    const fldEmptyState = document.getElementById('fld-empty-state');
-    const fldTableContainer = document.getElementById('fld-table-container');
-    const fldPreviewTbody = document.getElementById('fld-preview-tbody');
-    const fldFileCount = document.getElementById('fld-file-count');
-    const btnFldRun = document.getElementById('btn-fld-run');
-    const fldFileLabel = document.getElementById('fld-file-label');
     
-    fldProgress.classList.remove('hidden');
+    if (fldProgress) fldProgress.classList.remove('hidden');
     const updateFldProgress = (percent, text) => {
-        fldProgressPercent.textContent = `${Math.round(percent)}%`;
-        fldProgressFill.style.width = `${percent}%`;
-        if (text) fldProgressText.textContent = text;
+        if (fldProgressPercent) fldProgressPercent.textContent = `${Math.round(percent)}%`;
+        if (fldProgressFill) fldProgressFill.style.width = `${percent}%`;
+        if (fldProgressText && text) fldProgressText.textContent = text;
     };
     
-    updateFldProgress(5, "Reading uploaded files...");
-    fldUploadedFiles = [];
+    updateFldProgress(10, "Reading files...");
     
     try {
         const flatFilesList = [];
@@ -4338,103 +4689,85 @@ async function handleFldFileSelection(files) {
             const file = files[i];
             const ext = file.name.split('.').pop().toLowerCase();
             
-            if (ext === 'zip') {
+            // Skip system files
+            const isSystemFile = file.name.startsWith('.') || file.name.startsWith('~') || file.name === "Thumbs.db";
+            if (isSystemFile) continue;
+            
+            if (ext === 'zip' && fldMode === 'files') {
                 updateFldProgress(10 + Math.round((i / files.length) * 40), `Extracting ZIP: ${file.name}...`);
                 const extracted = await extractSpreadsheetsFromZip(file);
                 flatFilesList.push(...extracted);
-            } else if (ext === 'xlsx' || ext === 'xls' || ext === 'csv') {
+            } else if (['xlsx', 'xls', 'csv'].includes(ext)) {
                 flatFilesList.push({
                     name: file.name,
                     ext: ext,
-                    blob: file
+                    blob: file,
+                    customRelativePath: file.customRelativePath || file.webkitRelativePath || file.name
                 });
             }
         }
         
         if (flatFilesList.length === 0) {
-            fldProgress.classList.add('hidden');
+            if (fldProgress) fldProgress.classList.add('hidden');
             showToast("No valid Excel or CSV files found.", "error");
             return;
         }
         
-        if (fldFileLabel) {
-            fldFileLabel.textContent = `${flatFilesList.length} files loaded`;
-        }
-        if (fldFileCount) {
-            fldFileCount.textContent = `${flatFilesList.length} files loaded`;
-        }
-        
-        // Group files by prefix
-        const groups = new Map();
+        let addedCount = 0;
+        // Add to our list avoiding duplicates
         flatFilesList.forEach(fileData => {
-            const name = fileData.name;
-            if (name.includes("-")) {
-                const prefix = name.split("-")[0].trim();
-                if (prefix !== "") {
-                    if (!groups.has(prefix)) {
-                        groups.set(prefix, []);
+            if (fldMode === 'files') {
+                if (!fldUploadedFiles.some(f => f.name === fileData.name && f.fileObj.size === fileData.blob.size)) {
+                    fldUploadedFiles.push({
+                        name: fileData.name,
+                        ext: fileData.ext,
+                        fileObj: fileData.blob
+                    });
+                    addedCount++;
+                }
+            } else {
+                const relativePath = fileData.customRelativePath || fileData.name;
+                const normalizedPath = relativePath.replace(/\\/g, '/');
+                const pathParts = normalizedPath.split('/');
+                
+                if (pathParts.length > 1) {
+                    const folderName = pathParts[pathParts.length - 2];
+                    const cleanRelativePath = `${folderName}/${fileData.name}`;
+                    
+                    if (!fldUploadedFiles.some(f => f.relativePath === cleanRelativePath && f.fileObj.size === fileData.blob.size)) {
+                        fldUploadedFiles.push({
+                            name: fileData.name,
+                            ext: fileData.ext,
+                            fileObj: fileData.blob,
+                            folderName: folderName,
+                            relativePath: cleanRelativePath
+                        });
+                        addedCount++;
                     }
-                    groups.get(prefix).push(fileData);
+                } else {
+                    console.warn(`Ignored file [${fileData.name}] because it is not inside an uploaded folder.`);
                 }
             }
         });
         
-        // Save to fldUploadedFiles
-        flatFilesList.forEach(f => {
-            fldUploadedFiles.push({
-                name: f.name,
-                ext: f.ext,
-                fileObj: f.blob
-            });
-        });
-        
-        // Generate preview table rows HTML
-        let html = "";
-        let index = 1;
-        const sortedPrefixes = Array.from(groups.keys()).sort();
-        
-        sortedPrefixes.forEach(prefix => {
-            const filesInGroup = groups.get(prefix);
-            const count = filesInGroup.length;
-            const missingCount = count < 3 ? (3 - count) : 0;
-            
-            let statusBadge = "";
-            if (count >= 3) {
-                statusBadge = `<span class="badge success" style="background: rgba(16, 185, 129, 0.15); color: #10b981; padding: 2px 8px; border-radius: 4px; font-weight: 500; font-size: 0.7rem;">3+ Files (Complete)</span>`;
-            } else {
-                statusBadge = `<span class="badge danger" style="background: rgba(239, 68, 68, 0.15); color: #ef4444; padding: 2px 8px; border-radius: 4px; font-weight: 500; font-size: 0.7rem;">${count} Files (${missingCount} Missing)</span>`;
-            }
-            
-            const filesStr = filesInGroup.map(f => f.name).join(", ");
-            
-            html += `
-                <tr>
-                    <td>${index++}</td>
-                    <td style="font-weight: 600;">${prefix}</td>
-                    <td>${count}</td>
-                    <td>${statusBadge}</td>
-                    <td style="max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${filesStr}">${filesStr}</td>
-                </tr>
-            `;
-        });
-        
-        if (fldPreviewTbody) {
-            fldPreviewTbody.innerHTML = html;
+        if (addedCount > 0) {
+            showToast(`Added ${addedCount} file(s) to process.`, "success");
+        } else {
+            showToast("No new files added.", "warning");
         }
         
-        fldEmptyState.classList.add('hidden');
-        fldTableContainer.classList.remove('hidden');
+        updateFldSelectedUI();
+        recalculateFldGroupsAndPreview();
         
         updateFldProgress(100, "Files loaded and analyzed.");
-        
-        if (btnFldRun) {
-            btnFldRun.classList.remove('hidden');
-        }
+        setTimeout(() => {
+            if (fldProgress) fldProgress.classList.add('hidden');
+        }, 1000);
         
     } catch (err) {
         console.error(err);
-        showToast("Error processing selected files: " + err.message, "error");
-        fldProgress.classList.add('hidden');
+        showToast("Error processing files: " + err.message, "error");
+        if (fldProgress) fldProgress.classList.add('hidden');
     }
 }
 
@@ -4446,7 +4779,6 @@ async function runFolderCreateProcess() {
     
     const btnFldRun = document.getElementById('btn-fld-run');
     if (fldGeneratedZipBlob) {
-        // If already generated, this is a download action
         const a = document.createElement("a");
         a.href = URL.createObjectURL(fldGeneratedZipBlob);
         a.download = fldGeneratedZipName;
@@ -4462,37 +4794,49 @@ async function runFolderCreateProcess() {
     const fldProgressText = document.getElementById('fld-progress-text');
     const fldProgressFill = document.getElementById('fld-progress-fill');
     
-    fldProgress.classList.remove('hidden');
+    if (fldProgress) fldProgress.classList.remove('hidden');
     const updateFldProgress = (percent, text) => {
-        fldProgressPercent.textContent = `${Math.round(percent)}%`;
-        fldProgressFill.style.width = `${percent}%`;
-        if (text) fldProgressText.textContent = text;
+        if (fldProgressPercent) fldProgressPercent.textContent = `${Math.round(percent)}%`;
+        if (fldProgressFill) fldProgressFill.style.width = `${percent}%`;
+        if (fldProgressText && text) fldProgressText.textContent = text;
     };
     
     try {
-        btnFldRun.disabled = true;
-        updateFldProgress(10, "Grouping files by prefix...");
+        if (btnFldRun) btnFldRun.disabled = true;
+        updateFldProgress(10, "Grouping files...");
         await new Promise(r => setTimeout(r, 200));
         
-        // Group files by prefix
         const groups = new Map();
-        fldUploadedFiles.forEach(fileObj => {
-            const name = fileObj.name;
-            if (name.includes("-")) {
-                const prefix = name.split("-")[0].trim();
-                if (prefix !== "") {
-                    if (!groups.has(prefix)) {
-                        groups.set(prefix, []);
+        
+        if (fldMode === 'files') {
+            fldUploadedFiles.forEach(fileObj => {
+                const name = fileObj.name;
+                if (name.includes("-")) {
+                    const prefix = name.split("-")[0].trim();
+                    if (prefix !== "") {
+                        if (!groups.has(prefix)) {
+                            groups.set(prefix, []);
+                        }
+                        groups.get(prefix).push(fileObj);
                     }
-                    groups.get(prefix).push(fileObj);
                 }
-            }
-        });
+            });
+        } else {
+            fldUploadedFiles.forEach(fileObj => {
+                const folderName = fileObj.folderName;
+                if (folderName) {
+                    if (!groups.has(folderName)) {
+                        groups.set(folderName, []);
+                    }
+                    groups.get(folderName).push(fileObj);
+                }
+            });
+        }
         
         if (groups.size === 0) {
-            showToast("No files could be grouped (none had a prefix separated by '-').", "error");
-            fldProgress.classList.add('hidden');
-            btnFldRun.disabled = false;
+            showToast("No files could be grouped.", "error");
+            if (fldProgress) fldProgress.classList.add('hidden');
+            if (btnFldRun) btnFldRun.disabled = false;
             return;
         }
         
@@ -4503,10 +4847,10 @@ async function runFolderCreateProcess() {
         updateFldProgress(30, "Creating summary report sheets...");
         await new Promise(r => setTimeout(r, 200));
         
-        // Build Excel Summary
+        // Build Excel Summary (Myntra Group check = 3 files)
         const summaryAOA = [
             ["Folder Creation & Completeness Report"],
-            ["Folder Name (Prefix)", "Current File Count", "Missing Files Count", "Status"]
+            ["Folder Name", "Current File Count", "Missing Files Count", "Status"]
         ];
         
         const missingList = [];
@@ -4521,16 +4865,10 @@ async function runFolderCreateProcess() {
             }
         });
         
-        // Create summary workbook
         const summaryWS = XLSX.utils.aoa_to_sheet(summaryAOA);
-        
-        // Merge title
         summaryWS['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 3 } }];
-        
-        // Apply styling to summary sheet
         summaryWS['!views'] = [{ showGridLines: true }];
         
-        // Auto-fit column widths
         const colWidths = [
             { wch: 25 }, // Folder Name
             { wch: 20 }, // Current File Count
@@ -4539,7 +4877,6 @@ async function runFolderCreateProcess() {
         ];
         summaryWS['!cols'] = colWidths;
         
-        // Row Heights
         const rowHeights = [
             { hpt: 28 }, // Title Row
             { hpt: 24 }  // Header Row
@@ -4554,7 +4891,6 @@ async function runFolderCreateProcess() {
             if (cellKey[0] === '!') continue;
             const cell = summaryWS[cellKey];
             
-            // Borders
             cell.s = {
                 border: {
                     top: { style: "thin", color: { rgb: "D1D5DB" } },
@@ -4571,34 +4907,24 @@ async function runFolderCreateProcess() {
                 const colIndex = XLSX.utils.decode_col(col);
                 
                 if (rowNum === 1) {
-                    // Title block
-                    cell.s.fill = { fgColor: { rgb: "4C1D95" } }; // Dark Purple title
+                    cell.s.fill = { fgColor: { rgb: "4C1D95" } };
                     cell.s.font = { name: "Arial", sz: 12, bold: true, color: { rgb: "FFFFFF" } };
                     cell.s.alignment = { horizontal: "center", vertical: "center" };
                 } else if (rowNum === 2) {
-                    // Header row
-                    cell.s.fill = { fgColor: { rgb: "6D28D9" } }; // Purple headers
+                    cell.s.fill = { fgColor: { rgb: "6D28D9" } };
                     cell.s.font = { name: "Arial", sz: 10, bold: true, color: { rgb: "FFFFFF" } };
                     cell.s.alignment = { horizontal: "center", vertical: "center" };
                 } else {
-                    // Data rows
                     cell.s.font = { name: "Arial", sz: 10, color: { rgb: "000000" } };
-                    
-                    // Alignments
                     if (colIndex === 0) {
                         cell.s.alignment = { horizontal: "left", vertical: "center" };
-                    } else if (colIndex === 1 || colIndex === 2) {
-                        cell.s.alignment = { horizontal: "center", vertical: "center" };
-                    } else if (colIndex === 3) {
+                    } else {
                         cell.s.alignment = { horizontal: "center", vertical: "center" };
                     }
                     
-                    // Get row data
                     const rowData = summaryAOA[rowNum - 1];
                     const currentCount = rowData[1];
-                    
                     if (currentCount < 3) {
-                        // Highlight missing file folders in soft red
                         cell.s.fill = { fgColor: { rgb: "FEE2E2" } };
                         cell.s.font.color = { rgb: "991B1B" };
                     }
@@ -4611,21 +4937,20 @@ async function runFolderCreateProcess() {
         const summaryBuffer = XLSX.write(summaryWB, { bookType: 'xlsx', type: 'array' });
         const summaryBlob = new Blob([summaryBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
         
-        // Initialize Zip
         updateFldProgress(50, "Generating ZIP archive...");
         await new Promise(r => setTimeout(r, 200));
         
         const zip = new JSZip();
-        
-        // Add summary report to root of zip
         zip.file("Folder_Summary.xlsx", summaryBlob);
         
-        // Add files grouped in folders
         sortedPrefixes.forEach(prefix => {
             const filesInGroup = groups.get(prefix);
             filesInGroup.forEach(fileObj => {
-                // Add under the prefix folder in ZIP
-                zip.file(`${prefix}/${fileObj.name}`, fileObj.fileObj);
+                if (fldMode === 'files') {
+                    zip.file(`${prefix}/${fileObj.name}`, fileObj.fileObj);
+                } else {
+                    zip.file(fileObj.relativePath, fileObj.fileObj);
+                }
             });
         });
         
@@ -4640,20 +4965,21 @@ async function runFolderCreateProcess() {
         updateFldProgress(100, "Success!");
         showToast(`ZIP created successfully with ${groups.size} folders!`, "success");
         
-        // Update button state to Download
-        btnFldRun.innerHTML = `
-            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 5px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-            Download ZIP
-        `;
-        btnFldRun.style.background = "var(--color-od)"; // Purple/Indigo
-        btnFldRun.style.borderColor = "var(--color-od)";
-        btnFldRun.disabled = false;
+        if (btnFldRun) {
+            btnFldRun.innerHTML = `
+                <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 5px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                Download ZIP
+            `;
+            btnFldRun.style.background = "var(--color-od)";
+            btnFldRun.style.borderColor = "var(--color-od)";
+            btnFldRun.disabled = false;
+        }
         
     } catch (err) {
         console.error(err);
         showToast("Error creating folders and ZIP: " + err.message, "error");
-        btnFldRun.disabled = false;
-        fldProgress.classList.add('hidden');
+        if (btnFldRun) btnFldRun.disabled = false;
+        if (fldProgress) fldProgress.classList.add('hidden');
     }
 }
 
