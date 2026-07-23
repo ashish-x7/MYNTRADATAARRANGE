@@ -3906,7 +3906,7 @@ async function runErrorCheckProcess() {
             const rowsInGroup = partyGroups.get(partyKey);
 
             // Row 1 (index 0): Merged A1:L1 title block
-            const titleRow = [`${partyKey}-account center`, "", "", "", "", "", "", "", "", "", "", ""];
+            const titleRow = [`${partyKey}-price dispute`, "", "", "", "", "", "", "", "", "", "", ""];
 
             // Row 2 (index 1): Column Headers matching screenshot exactly
             const colAHeader = "Invoice No";
@@ -3963,14 +3963,14 @@ async function runErrorCheckProcess() {
             applyWorksheetFormatting(wsGroup, sheetAOA, true);
 
             // Sheet name max length 31 chars in Excel
-            const sheetName = `${partyKey}-account center`.substring(0, 31);
+            const sheetName = `${partyKey}-price dispute`.substring(0, 31);
 
             // 1. Create individual workbook
             const wbGroup = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(wbGroup, wsGroup, sheetName);
             const bufferGroup = XLSX.write(wbGroup, { bookType: 'xlsx', type: 'array' });
             const blobGroup = new Blob([bufferGroup], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-            const groupFilename = `${partyKey}-account center.xlsx`;
+            const groupFilename = `${partyKey}-price dispute.xlsx`;
             zip.file(groupFilename, blobGroup);
 
             // Register tracked error in database
@@ -3988,14 +3988,15 @@ async function runErrorCheckProcess() {
             zip.file("myntra price dispute.xlsx", masterBlob);
         }
 
-        // Keep all original columns (no slicing of column W) and place header at Row 1, data at Row 2 onwards
-        const detailsCleaned = [headerDetails, ...survivingRows];
+        // Preserve top row(s) so header is placed at Row 2, data starting at Row 3 onwards (matching uploaded details file format)
+        const topRows = headerRowIndex > 0 ? detailsAOA.slice(0, headerRowIndex) : [[]];
+        const detailsCleaned = [...topRows, headerDetails, ...survivingRows];
 
         const wbDetails = XLSX.utils.book_new();
         const wsDetails = XLSX.utils.aoa_to_sheet(detailsCleaned);
         
         // Format Details worksheet
-        applyWorksheetFormatting(wsDetails, detailsCleaned, false);
+        applyWorksheetFormatting(wsDetails, detailsCleaned, false, headerRowIndex > 0 ? headerRowIndex : 1);
 
         XLSX.utils.book_append_sheet(wbDetails, wsDetails, "Processed_Details");
         const detailsBuffer = XLSX.write(wbDetails, { bookType: 'xlsx', type: 'array' });
@@ -4051,7 +4052,7 @@ async function runErrorCheckProcess() {
                 rowHTML += `
                     <tr class="row-color-${(index + 2) % 7}">
                         <td><strong>${index + 3}</strong></td>
-                        <td><span class="file-name" title="${partyKey}-account center.xlsx">${partyKey}-account center.xlsx</span></td>
+                        <td><span class="file-name" title="${partyKey}-price dispute.xlsx">${partyKey}-price dispute.xlsx</span></td>
                         <td><span style="color: var(--primary); font-weight: bold;">${count}</span></td>
                         <td><span class="badge badge-od">${count} rows processed</span></td>
                     </tr>
@@ -4073,7 +4074,7 @@ async function runErrorCheckProcess() {
 }
 
 // Applies column auto-fit, gridlines, number formats, and custom header cell styling properties
-function applyWorksheetFormatting(ws, sheetAOA, isGroupSheet) {
+function applyWorksheetFormatting(ws, sheetAOA, isGroupSheet, headerRowIdx = 0) {
     if (!ws || !sheetAOA || sheetAOA.length === 0) return;
     
     // 1. Force gridlines visibility
@@ -4104,8 +4105,9 @@ function applyWorksheetFormatting(ws, sheetAOA, isGroupSheet) {
             rowHeights.push({ hpt: 20 }); // Data rows (20pt)
         }
     } else {
-        rowHeights.push({ hpt: 24 }); // Details header (24pt)
-        for (let r = 1; r < sheetAOA.length; r++) {
+        rowHeights.push({ hpt: 20 }); // Row 1: Empty
+        rowHeights.push({ hpt: 24 }); // Row 2: Details header (24pt)
+        for (let r = 2; r < sheetAOA.length; r++) {
             rowHeights.push({ hpt: 20 }); // Details data rows (20pt)
         }
     }
@@ -4165,22 +4167,22 @@ function applyWorksheetFormatting(ws, sheetAOA, isGroupSheet) {
                     // Data rows: Arial 10pt with appropriate column alignments
                     cell.s.font = { name: "Arial", sz: 10, color: { rgb: "000000" } };
                     cell.s.alignment = { horizontal: colAlignments[colIndex] || "left", vertical: "center" };
-                    
-                    // Format numeric values
                 }
             } else {
-                // Details sheet
-                if (rowNum === 1) {
-                    // Row 1 (Headers): Dark Blue background (#2F5597), white bold text, size 10
+                // Details sheet: Header at Row 2, data from Row 3
+                const detailHeaderRowNum = 2;
+                if (rowNum === detailHeaderRowNum) {
+                    // Header Row: Dark Blue background (#2F5597), white bold text, size 10
                     cell.s.fill = { fgColor: { rgb: "2F5597" } };
                     cell.s.font = { name: "Arial", sz: 10, bold: true, color: { rgb: "FFFFFF" } };
                     cell.s.alignment = { horizontal: "left", vertical: "center" };
+                } else if (rowNum < detailHeaderRowNum) {
+                    // Row 1: Plain
+                    cell.s.font = { name: "Arial", sz: 10, color: { rgb: "000000" } };
                 } else {
                     // Data rows: Arial 10pt
                     cell.s.font = { name: "Arial", sz: 10, color: { rgb: "000000" } };
                     cell.s.alignment = { horizontal: "left", vertical: "center" };
-                    
-                    // Format numeric values
                 }
             }
         }
