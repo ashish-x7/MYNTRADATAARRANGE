@@ -5141,18 +5141,9 @@ async function handleInvFileSelection(files) {
         if (descColIndex === -1) descColIndex = 6;
         if (sellerColIndex === -1) sellerColIndex = 7;
         
-        // Helper functions for checking specific invoice error types
-        const isInvoiceLocked = (val) => String(val || "").trim().toLowerCase() === "invoice locked";
-        const isSellerWarehouseNotFound = (val) => {
-            const v = String(val || "").trim().toLowerCase();
-            return v === "seller warehouse not found" || v === "seller warehouse not found.";
-        };
-
-        // Count invoice locked and seller warehouse not found rows
-        const lockedCount = dataRows.filter(row => isInvoiceLocked(row[descColIndex])).length;
-        const warehouseNotFoundCount = dataRows.filter(row => isSellerWarehouseNotFound(row[descColIndex])).length;
-        
-        const cleanedRows = dataRows.filter(row => !isInvoiceLocked(row[descColIndex]) && !isSellerWarehouseNotFound(row[descColIndex]));
+        // Count invoice locked rows
+        const lockedCount = dataRows.filter(row => String(row[descColIndex] || "").trim().toLowerCase() === "invoice locked").length;
+        const cleanedRows = dataRows.filter(row => String(row[descColIndex] || "").trim().toLowerCase() !== "invoice locked");
         
         // Group remaining rows to show preview of what will be generated
         const errorGroups = new Map();
@@ -5181,17 +5172,6 @@ async function handleInvFileSelection(files) {
                     <td style="font-weight: 600; color: #ef4444;">Invoice Locked Rows</td>
                     <td><span class="badge danger" style="background: rgba(239, 68, 68, 0.15); color: #ef4444; padding: 2px 8px; border-radius: 4px; font-weight: 500; font-size: 0.7rem;">Will Be Deleted</span></td>
                     <td style="color: #991b1b; font-weight: 500;">${lockedCount} rows flagged for removal.</td>
-                </tr>
-            `;
-        }
-        
-        if (warehouseNotFoundCount > 0) {
-            html += `
-                <tr style="background: rgba(239, 68, 68, 0.05);">
-                    <td>-</td>
-                    <td style="font-weight: 600; color: #ef4444;">Seller Warehouse Not Found Rows</td>
-                    <td><span class="badge danger" style="background: rgba(239, 68, 68, 0.15); color: #ef4444; padding: 2px 8px; border-radius: 4px; font-weight: 500; font-size: 0.7rem;">Will Be Deleted</span></td>
-                    <td style="color: #991b1b; font-weight: 500;">${warehouseNotFoundCount} rows flagged for removal.</td>
                 </tr>
             `;
         }
@@ -5286,20 +5266,12 @@ async function runInvoiceErrorProcess() {
         if (descColIndex === -1) descColIndex = 6; // Column G
         if (sellerColIndex === -1) sellerColIndex = 7; // Column H
         
-        updateInvProgress(20, "Filtering out 'Invoice Locked' & 'Seller Warehouse Not Found' rows...");
+        updateInvProgress(20, "Filtering out 'Invoice Locked' rows...");
         await new Promise(r => setTimeout(r, 200));
         
-        const isInvoiceLocked = (val) => String(val || "").trim().toLowerCase() === "invoice locked";
-        const isSellerWarehouseNotFound = (val) => {
-            const v = String(val || "").trim().toLowerCase();
-            return v === "seller warehouse not found" || v === "seller warehouse not found.";
-        };
-
-        // 1. Delete rows where Column G (Description) is "Invoice Locked" or "Seller Warehouse Not Found"
-        const lockedRowsCount = dataRows.filter(row => isInvoiceLocked(row[descColIndex])).length;
-        const warehouseNotFoundRowsCount = dataRows.filter(row => isSellerWarehouseNotFound(row[descColIndex])).length;
-        
-        const cleanedDataRows = dataRows.filter(row => !isInvoiceLocked(row[descColIndex]) && !isSellerWarehouseNotFound(row[descColIndex]));
+        // 1. Delete rows where Column G (Description) is "Invoice Locked"
+        const lockedRowsCount = dataRows.filter(row => String(row[descColIndex] || "").trim().toLowerCase() === "invoice locked").length;
+        const cleanedDataRows = dataRows.filter(row => String(row[descColIndex] || "").trim().toLowerCase() !== "invoice locked");
         
         // Create Cleaned Original Workbook
         const cleanedAOA = [headerRow, ...cleanedDataRows];
@@ -5494,13 +5466,7 @@ async function runInvoiceErrorProcess() {
         invGeneratedZipName = `myntra_error-bundle.zip`;
         
         updateInvProgress(100, "Success!");
-        
-        let deletedSummary = [];
-        if (lockedRowsCount > 0) deletedSummary.push(`${lockedRowsCount} 'Invoice Locked'`);
-        if (warehouseNotFoundRowsCount > 0) deletedSummary.push(`${warehouseNotFoundRowsCount} 'Seller Warehouse Not Found'`);
-        const deletedText = deletedSummary.length > 0 ? ` Deleted ${deletedSummary.join(' and ')} rows.` : '';
-        
-        showToast(`Invoice error package created successfully!${deletedText}`, "success");
+        showToast(`Invoice error package created successfully! Deleted ${lockedRowsCount} 'Invoice Locked' rows.`, "success");
         
         if (invPreviewTbody) {
             invPreviewTbody.innerHTML = htmlPreview;
