@@ -5149,7 +5149,11 @@ async function handleInvFileSelection(files) {
         const errorGroups = new Map();
         cleanedRows.forEach(row => {
             const errorVal = String(row[descColIndex] || "").trim();
-            const partyVal = String(row[sellerColIndex] || "").trim();
+            let partyVal = String(row[sellerColIndex] || "").trim();
+            if (errorVal && !partyVal) {
+                partyVal = errorVal;
+            }
+            
             if (errorVal && partyVal) {
                 if (!errorGroups.has(errorVal)) {
                     errorGroups.set(errorVal, new Map());
@@ -5178,12 +5182,13 @@ async function handleInvFileSelection(files) {
         
         for (const [errorType, partyMap] of errorGroups.entries()) {
             for (const [partyName, rows] of partyMap.entries()) {
+                const comboName = partyName === errorType ? partyName : `${partyName}-${errorType}`;
                 html += `
                     <tr>
                         <td>${index++}</td>
                         <td style="font-weight: 600;">${partyName}</td>
                         <td><span class="badge danger" style="background: rgba(245, 158, 11, 0.15); color: #d97706; padding: 2px 8px; border-radius: 4px; font-weight: 500; font-size: 0.7rem;">${errorType}</span></td>
-                        <td>${rows.length} rows. Will create <code>${partyName}-${errorType}.xlsx</code></td>
+                        <td>${rows.length} rows. Will create <code>${comboName}.xlsx</code></td>
                     </tr>
                 `;
             }
@@ -5290,7 +5295,10 @@ async function runInvoiceErrorProcess() {
         
         cleanedDataRows.forEach(row => {
             const errorVal = String(row[descColIndex] || "").trim();
-            const partyVal = String(row[sellerColIndex] || "").trim();
+            let partyVal = String(row[sellerColIndex] || "").trim();
+            if (errorVal && !partyVal) {
+                partyVal = errorVal;
+            }
             
             if (errorVal && partyVal) {
                 if (!errorGroups.has(errorVal)) {
@@ -5337,7 +5345,7 @@ async function runInvoiceErrorProcess() {
         // Loop through errors and parties
         for (const [errorType, partyMap] of errorGroups.entries()) {
             for (const [partyName, rows] of partyMap.entries()) {
-                const comboName = `${partyName}-${errorType}`;
+                const comboName = partyName === errorType ? partyName : `${partyName}-${errorType}`;
                 
                 // Form merged Row 1 title and Headers Row 2
                 const titleRow = Array(headerRow.length).fill("");
