@@ -109,6 +109,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setupFolderCreate();
     setupInvoiceError();
     setupErrorTracker();
+    setupCleanAndResetButtons();
 });
 
 
@@ -5140,9 +5141,18 @@ async function handleInvFileSelection(files) {
         if (descColIndex === -1) descColIndex = 6;
         if (sellerColIndex === -1) sellerColIndex = 7;
         
-        // Count invoice locked rows
-        const lockedCount = dataRows.filter(row => String(row[descColIndex] || "").trim().toLowerCase() === "invoice locked").length;
-        const cleanedRows = dataRows.filter(row => String(row[descColIndex] || "").trim().toLowerCase() !== "invoice locked");
+        // Helper functions for checking specific invoice error types
+        const isInvoiceLocked = (val) => String(val || "").trim().toLowerCase() === "invoice locked";
+        const isSellerWarehouseNotFound = (val) => {
+            const v = String(val || "").trim().toLowerCase();
+            return v === "seller warehouse not found" || v === "seller warehouse not found.";
+        };
+
+        // Count invoice locked and seller warehouse not found rows
+        const lockedCount = dataRows.filter(row => isInvoiceLocked(row[descColIndex])).length;
+        const warehouseNotFoundCount = dataRows.filter(row => isSellerWarehouseNotFound(row[descColIndex])).length;
+        
+        const cleanedRows = dataRows.filter(row => !isInvoiceLocked(row[descColIndex]) && !isSellerWarehouseNotFound(row[descColIndex]));
         
         // Group remaining rows to show preview of what will be generated
         const errorGroups = new Map();
@@ -5171,6 +5181,17 @@ async function handleInvFileSelection(files) {
                     <td style="font-weight: 600; color: #ef4444;">Invoice Locked Rows</td>
                     <td><span class="badge danger" style="background: rgba(239, 68, 68, 0.15); color: #ef4444; padding: 2px 8px; border-radius: 4px; font-weight: 500; font-size: 0.7rem;">Will Be Deleted</span></td>
                     <td style="color: #991b1b; font-weight: 500;">${lockedCount} rows flagged for removal.</td>
+                </tr>
+            `;
+        }
+        
+        if (warehouseNotFoundCount > 0) {
+            html += `
+                <tr style="background: rgba(239, 68, 68, 0.05);">
+                    <td>-</td>
+                    <td style="font-weight: 600; color: #ef4444;">Seller Warehouse Not Found Rows</td>
+                    <td><span class="badge danger" style="background: rgba(239, 68, 68, 0.15); color: #ef4444; padding: 2px 8px; border-radius: 4px; font-weight: 500; font-size: 0.7rem;">Will Be Deleted</span></td>
+                    <td style="color: #991b1b; font-weight: 500;">${warehouseNotFoundCount} rows flagged for removal.</td>
                 </tr>
             `;
         }
@@ -5265,12 +5286,20 @@ async function runInvoiceErrorProcess() {
         if (descColIndex === -1) descColIndex = 6; // Column G
         if (sellerColIndex === -1) sellerColIndex = 7; // Column H
         
-        updateInvProgress(20, "Filtering out 'Invoice Locked' rows...");
+        updateInvProgress(20, "Filtering out 'Invoice Locked' & 'Seller Warehouse Not Found' rows...");
         await new Promise(r => setTimeout(r, 200));
         
-        // 1. Delete rows where Column G (Description) is "Invoice Locked"
-        const lockedRowsCount = dataRows.filter(row => String(row[descColIndex] || "").trim().toLowerCase() === "invoice locked").length;
-        const cleanedDataRows = dataRows.filter(row => String(row[descColIndex] || "").trim().toLowerCase() !== "invoice locked");
+        const isInvoiceLocked = (val) => String(val || "").trim().toLowerCase() === "invoice locked";
+        const isSellerWarehouseNotFound = (val) => {
+            const v = String(val || "").trim().toLowerCase();
+            return v === "seller warehouse not found" || v === "seller warehouse not found.";
+        };
+
+        // 1. Delete rows where Column G (Description) is "Invoice Locked" or "Seller Warehouse Not Found"
+        const lockedRowsCount = dataRows.filter(row => isInvoiceLocked(row[descColIndex])).length;
+        const warehouseNotFoundRowsCount = dataRows.filter(row => isSellerWarehouseNotFound(row[descColIndex])).length;
+        
+        const cleanedDataRows = dataRows.filter(row => !isInvoiceLocked(row[descColIndex]) && !isSellerWarehouseNotFound(row[descColIndex]));
         
         // Create Cleaned Original Workbook
         const cleanedAOA = [headerRow, ...cleanedDataRows];
@@ -5465,7 +5494,13 @@ async function runInvoiceErrorProcess() {
         invGeneratedZipName = `myntra_error-bundle.zip`;
         
         updateInvProgress(100, "Success!");
-        showToast(`Invoice error package created successfully! Deleted ${lockedRowsCount} 'Invoice Locked' rows.`, "success");
+        
+        let deletedSummary = [];
+        if (lockedRowsCount > 0) deletedSummary.push(`${lockedRowsCount} 'Invoice Locked'`);
+        if (warehouseNotFoundRowsCount > 0) deletedSummary.push(`${warehouseNotFoundRowsCount} 'Seller Warehouse Not Found'`);
+        const deletedText = deletedSummary.length > 0 ? ` Deleted ${deletedSummary.join(' and ')} rows.` : '';
+        
+        showToast(`Invoice error package created successfully!${deletedText}`, "success");
         
         if (invPreviewTbody) {
             invPreviewTbody.innerHTML = htmlPreview;
@@ -5990,4 +6025,379 @@ window.errorTracker = {
     clear: clearTrackedErrorsDb,
     render: renderErrorTracker
 };
+
+// ==========================
+// CLEAN & RESET TAB LOGIC
+// ==========================
+
+function setupCleanAndResetButtons() {
+    const btnResetProcessor = document.getElementById('btn-reset-processor');
+    const btnResetRename = document.getElementById('btn-reset-rename');
+    const btnResetMerge = document.getElementById('btn-reset-merge');
+    const btnResetSeparate = document.getElementById('btn-reset-separate');
+    const btnResetFolderCreate = document.getElementById('btn-reset-folder-create');
+    const btnResetDatabase = document.getElementById('btn-reset-database');
+    const btnResetMyntraError = document.getElementById('btn-reset-myntra-error');
+    const btnResetInvoiceError = document.getElementById('btn-reset-invoice-error');
+    const btnResetErrorTracker = document.getElementById('btn-reset-error-tracker');
+
+    if (btnResetProcessor) btnResetProcessor.addEventListener('click', resetProcessorTab);
+    if (btnResetRename) btnResetRename.addEventListener('click', resetRenameTab);
+    if (btnResetMerge) btnResetMerge.addEventListener('click', resetMergeTab);
+    if (btnResetSeparate) btnResetSeparate.addEventListener('click', resetSeparateTab);
+    if (btnResetFolderCreate) btnResetFolderCreate.addEventListener('click', resetFolderCreateTab);
+    if (btnResetDatabase) btnResetDatabase.addEventListener('click', resetDatabaseTab);
+    if (btnResetMyntraError) btnResetMyntraError.addEventListener('click', resetMyntraErrorTab);
+    if (btnResetInvoiceError) btnResetInvoiceError.addEventListener('click', resetInvoiceErrorTab);
+    if (btnResetErrorTracker) btnResetErrorTracker.addEventListener('click', resetErrorTrackerTab);
+}
+
+function resetProcessorTab() {
+    filesList = [];
+    isProcessed = false;
+    uploadedZipBaseName = "";
+    if (fileInput) fileInput.value = "";
+    if (folderInput) folderInput.value = "";
+    if (searchInput) searchInput.value = "";
+
+    if (tableContainer) tableContainer.classList.add('hidden');
+    if (emptyState) emptyState.classList.remove('hidden');
+    if (inlineProgress) inlineProgress.classList.add('hidden');
+    if (dashboardControls) dashboardControls.classList.add('hidden');
+    if (mappingCard) mappingCard.classList.add('hidden');
+    if (filesTbody) filesTbody.innerHTML = "";
+
+    if (btnProcessAction) {
+        btnProcessAction.classList.add('hidden');
+        btnProcessAction.disabled = false;
+    }
+    if (btnDownloadZip) {
+        btnDownloadZip.classList.add('hidden');
+    }
+
+    const rangeVal = document.getElementById('range-value');
+    if (rangeVal) rangeVal.textContent = "—";
+
+    const cancelledInvoicesList = document.getElementById('cancelled-invoices-list');
+    if (cancelledInvoicesList) cancelledInvoicesList.innerHTML = '<span class="text-muted" style="color: var(--text-muted);">None logged yet...</span>';
+
+    const consoleLogs = document.getElementById('console-logs');
+    if (consoleLogs) consoleLogs.innerHTML = '<div class="log-line text-muted" style="color: var(--text-muted);">Ready to run pipeline...</div>';
+
+    const statTotal = document.getElementById('stat-total');
+    const statOd = document.getElementById('stat-od');
+    const statDt = document.getElementById('stat-dt');
+    const statDtSold = document.getElementById('stat-dt-sold');
+    const statDtCancelled = document.getElementById('stat-dt-cancelled');
+    const statUnmatched = document.getElementById('stat-unmatched');
+    if (statTotal) statTotal.textContent = "0";
+    if (statOd) statOd.textContent = "0";
+    if (statDt) statDt.textContent = "0";
+    if (statDtSold) statDtSold.textContent = "0";
+    if (statDtCancelled) statDtCancelled.textContent = "0";
+    if (statUnmatched) statUnmatched.textContent = "0";
+
+    showToast("Processor tab cleaned & reset.", "success");
+}
+
+function resetRenameTab() {
+    renUploadedFiles = [];
+    renGeneratedZipBlob = null;
+    renGeneratedZipName = "";
+
+    const renFileInput = document.getElementById('ren-file-input');
+    if (renFileInput) renFileInput.value = "";
+
+    const renFileLabel = document.getElementById('ren-file-label');
+    if (renFileLabel) renFileLabel.textContent = "Drag & Drop files here";
+
+    const renFileCount = document.getElementById('ren-file-count');
+    if (renFileCount) renFileCount.textContent = "0 files loaded";
+
+    const renProgress = document.getElementById('ren-progress');
+    if (renProgress) renProgress.classList.add('hidden');
+
+    const renTableContainer = document.getElementById('ren-table-container');
+    if (renTableContainer) renTableContainer.classList.add('hidden');
+
+    const renEmptyState = document.getElementById('ren-empty-state');
+    if (renEmptyState) renEmptyState.classList.remove('hidden');
+
+    const renPreviewTbody = document.getElementById('ren-preview-tbody');
+    if (renPreviewTbody) renPreviewTbody.innerHTML = "";
+
+    const btnRenameRun = document.getElementById('btn-rename-run');
+    if (btnRenameRun) {
+        btnRenameRun.classList.add('hidden');
+        btnRenameRun.innerHTML = `
+            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+            Rename Files
+        `;
+        btnRenameRun.style.background = "";
+        btnRenameRun.style.borderColor = "";
+        btnRenameRun.disabled = false;
+    }
+
+    const defaultRadio = document.querySelector('input[name="ren-method"][value="yes"]');
+    if (defaultRadio) defaultRadio.checked = true;
+
+    showToast("Rename tab cleaned & reset.", "success");
+}
+
+function resetMergeTab() {
+    mrgUploadedFiles = [];
+    mrgGeneratedZipBlob = null;
+    mrgGeneratedZipName = "";
+
+    const mrgFileInput = document.getElementById('mrg-file-input');
+    if (mrgFileInput) mrgFileInput.value = "";
+
+    const mrgFileLabel = document.getElementById('mrg-file-label');
+    if (mrgFileLabel) mrgFileLabel.textContent = "Drag & Drop files here";
+
+    const mrgGroupCount = document.getElementById('mrg-group-count');
+    if (mrgGroupCount) mrgGroupCount.textContent = "0 groups detected";
+
+    const mrgProgress = document.getElementById('mrg-progress');
+    if (mrgProgress) mrgProgress.classList.add('hidden');
+
+    const mrgTableContainer = document.getElementById('mrg-table-container');
+    if (mrgTableContainer) mrgTableContainer.classList.add('hidden');
+
+    const mrgEmptyState = document.getElementById('mrg-empty-state');
+    if (mrgEmptyState) mrgEmptyState.classList.remove('hidden');
+
+    const mrgPreviewTbody = document.getElementById('mrg-preview-tbody');
+    if (mrgPreviewTbody) mrgPreviewTbody.innerHTML = "";
+
+    const btnMergeRun = document.getElementById('btn-merge-run');
+    if (btnMergeRun) {
+        btnMergeRun.classList.add('hidden');
+        btnMergeRun.innerHTML = `
+            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"></polyline><line x1="4" y1="20" x2="21" y2="3"></line><polyline points="21 16 21 21 16 21"></polyline><line x1="15" y1="15" x2="21" y2="21"></line><line x1="4" y1="4" x2="9" y2="9"></line></svg>
+            Merge Files
+        `;
+        btnMergeRun.style.background = "";
+        btnMergeRun.style.borderColor = "";
+        btnMergeRun.disabled = false;
+    }
+
+    showToast("Merge tab cleaned & reset.", "success");
+}
+
+function resetSeparateTab() {
+    sepUploadedFile = null;
+    sepGeneratedZipBlob = null;
+    sepGeneratedZipName = "";
+
+    const sepFileInput = document.getElementById('sep-file-input');
+    if (sepFileInput) sepFileInput.value = "";
+
+    const sepFileLabel = document.getElementById('sep-file-label');
+    if (sepFileLabel) sepFileLabel.textContent = "Upload Excel file to split";
+
+    const sepUniqueCount = document.getElementById('sep-unique-count');
+    if (sepUniqueCount) sepUniqueCount.textContent = "0 unique values";
+
+    const sepProgress = document.getElementById('sep-progress');
+    if (sepProgress) sepProgress.classList.add('hidden');
+
+    const sepTableContainer = document.getElementById('sep-table-container');
+    if (sepTableContainer) sepTableContainer.classList.add('hidden');
+
+    const sepEmptyState = document.getElementById('sep-empty-state');
+    if (sepEmptyState) sepEmptyState.classList.remove('hidden');
+
+    const sepPreviewTbody = document.getElementById('sep-preview-tbody');
+    if (sepPreviewTbody) sepPreviewTbody.innerHTML = "";
+
+    const btnSplitRun = document.getElementById('btn-split-run');
+    if (btnSplitRun) {
+        btnSplitRun.classList.add('hidden');
+        btnSplitRun.innerHTML = `
+            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="8" height="18" rx="2"></rect><rect x="14" y="3" width="8" height="18" rx="2"></rect></svg>
+            Split File
+        `;
+        btnSplitRun.style.background = "";
+        btnSplitRun.style.borderColor = "";
+        btnSplitRun.disabled = false;
+    }
+
+    const defaultMode = document.querySelector('input[name="split-mode"][value="1"]');
+    if (defaultMode) defaultMode.checked = true;
+    const defaultCol = document.querySelector('input[name="simple-col"][value="D"]');
+    if (defaultCol) defaultCol.checked = true;
+
+    showToast("Separate tab cleaned & reset.", "success");
+}
+
+function resetFolderCreateTab() {
+    fldUploadedFiles = [];
+    fldGeneratedZipBlob = null;
+    fldGeneratedZipName = "";
+
+    const fldFileInput = document.getElementById('fld-file-input');
+    const fldFolderInput = document.getElementById('fld-folder-input');
+    if (fldFileInput) fldFileInput.value = "";
+    if (fldFolderInput) fldFolderInput.value = "";
+
+    const fldFileLabel = document.getElementById('fld-file-label');
+    if (fldFileLabel) fldFileLabel.textContent = "Drag & Drop files here";
+
+    const fldFileCount = document.getElementById('fld-file-count');
+    if (fldFileCount) fldFileCount.textContent = "0 files loaded";
+
+    const fldProgress = document.getElementById('fld-progress');
+    if (fldProgress) fldProgress.classList.add('hidden');
+
+    const fldTableContainer = document.getElementById('fld-table-container');
+    if (fldTableContainer) fldTableContainer.classList.add('hidden');
+
+    const fldEmptyState = document.getElementById('fld-empty-state');
+    if (fldEmptyState) fldEmptyState.classList.remove('hidden');
+
+    const fldSelectedCard = document.getElementById('fld-selected-card');
+    if (fldSelectedCard) fldSelectedCard.style.display = 'none';
+
+    const fldPreviewTbody = document.getElementById('fld-preview-tbody');
+    if (fldPreviewTbody) fldPreviewTbody.innerHTML = "";
+
+    const fldSelectedList = document.getElementById('fld-selected-list');
+    if (fldSelectedList) fldSelectedList.innerHTML = "";
+
+    const btnFldRun = document.getElementById('btn-fld-run');
+    if (btnFldRun) {
+        btnFldRun.classList.add('hidden');
+        btnFldRun.innerHTML = `
+            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 5px;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+            Create Folders & Zip
+        `;
+        btnFldRun.style.background = "";
+        btnFldRun.style.borderColor = "";
+        btnFldRun.disabled = false;
+    }
+
+    showToast("Folder Create tab cleaned & reset.", "success");
+}
+
+function resetDatabaseTab() {
+    editingPartyCode = null;
+    const formAddParty = document.getElementById('form-add-party');
+    if (formAddParty) formAddParty.reset();
+
+    const dbSearchInput = document.getElementById('db-search-input');
+    if (dbSearchInput) dbSearchInput.value = "";
+
+    if (typeof renderPartyTable === 'function') {
+        renderPartyTable();
+    }
+    showToast("Party database inputs cleaned & reset.", "success");
+}
+
+function resetMyntraErrorTab() {
+    errDetailsFile = null;
+    errDataFile = null;
+    errGeneratedZipBlob = null;
+    errGeneratedZipName = "";
+    if (typeof resetErrorButtonState === 'function') {
+        resetErrorButtonState();
+    }
+
+    const errDetailsInput = document.getElementById('err-details-file-input');
+    const errDataInput = document.getElementById('err-data-file-input');
+    const errFromDate = document.getElementById('err-from-date');
+    const errToDate = document.getElementById('err-to-date');
+
+    if (errDetailsInput) errDetailsInput.value = "";
+    if (errDataInput) errDataInput.value = "";
+    if (errFromDate) errFromDate.value = "";
+    if (errToDate) errToDate.value = "";
+
+    const errDetailsLabel = document.getElementById('err-details-label');
+    if (errDetailsLabel) errDetailsLabel.textContent = "Drag or click to upload Details";
+
+    const errDataLabel = document.getElementById('err-data-label');
+    if (errDataLabel) errDataLabel.textContent = "Drag or click to upload Data";
+
+    const tagDetails = document.getElementById('err-details-tag');
+    if (tagDetails) {
+        tagDetails.textContent = "Required";
+        tagDetails.style.background = "rgba(239, 68, 68, 0.1)";
+        tagDetails.style.color = "#ef4444";
+    }
+    const tagData = document.getElementById('err-data-tag');
+    if (tagData) {
+        tagData.textContent = "Required";
+        tagData.style.background = "rgba(239, 68, 68, 0.1)";
+        tagData.style.color = "#ef4444";
+    }
+
+    const errFileCount = document.getElementById('err-file-count');
+    if (errFileCount) errFileCount.textContent = "0 files loaded";
+
+    const errProgress = document.getElementById('err-progress');
+    if (errProgress) errProgress.classList.add('hidden');
+
+    const errTableContainer = document.getElementById('err-table-container');
+    if (errTableContainer) errTableContainer.classList.add('hidden');
+
+    const errEmptyState = document.getElementById('err-empty-state');
+    if (errEmptyState) errEmptyState.classList.remove('hidden');
+
+    const errPreviewTbody = document.getElementById('err-preview-tbody');
+    if (errPreviewTbody) errPreviewTbody.innerHTML = "";
+
+    const btnErrorRun = document.getElementById('btn-error-run');
+    if (btnErrorRun) {
+        btnErrorRun.classList.add('hidden');
+    }
+
+    showToast("Myntra Error tab cleaned & reset.", "success");
+}
+
+function resetInvoiceErrorTab() {
+    invUploadedFiles = [];
+    resetInvoiceErrorButtonState();
+
+    const invFileInput = document.getElementById('inv-file-input');
+    if (invFileInput) invFileInput.value = "";
+
+    const invFileCount = document.getElementById('inv-file-count');
+    if (invFileCount) invFileCount.textContent = "0 files loaded";
+
+    const invProgress = document.getElementById('inv-progress');
+    if (invProgress) invProgress.classList.add('hidden');
+
+    const invTableContainer = document.getElementById('inv-table-container');
+    if (invTableContainer) invTableContainer.classList.add('hidden');
+
+    const invEmptyState = document.getElementById('inv-empty-state');
+    if (invEmptyState) invEmptyState.classList.remove('hidden');
+
+    const invPreviewTbody = document.getElementById('inv-preview-tbody');
+    if (invPreviewTbody) invPreviewTbody.innerHTML = "";
+
+    const btnInvRun = document.getElementById('btn-inv-run');
+    if (btnInvRun) {
+        btnInvRun.classList.add('hidden');
+    }
+
+    showToast("Invoice Error tab cleaned & reset.", "success");
+}
+
+function resetErrorTrackerTab() {
+    const trackerSearchInput = document.getElementById('trackerSearchInput');
+    if (trackerSearchInput) trackerSearchInput.value = "";
+
+    const trackerStatusFilter = document.getElementById('trackerStatusFilter');
+    if (trackerStatusFilter) trackerStatusFilter.value = "all";
+
+    const trackerSourceFilter = document.getElementById('trackerSourceFilter');
+    if (trackerSourceFilter) trackerSourceFilter.value = "all";
+
+    if (typeof loadTrackerFromDatabase === 'function') {
+        loadTrackerFromDatabase();
+    }
+    showToast("Error Dispute Tracker filters reset.", "success");
+}
 
