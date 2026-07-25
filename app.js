@@ -1110,8 +1110,8 @@ async function processPartyPipeline(odFileObj, dtFileObj, summaryFileObj, partyC
         }
     }
     
-    // Step 12: Master Combined Report Join
-    addLog(`[${partyCode}] Master Combined Step: Loading lookup dictionary...`, "info");
+    // Step 12: Master Combined Report Join (Run strictly after DT file changes & Rate/GST calculations)
+    addLog(`[${partyCode}] Master Combined Step: Loading updated DT lookup dictionary...`, "info");
     const dtDict = new Map();
     for (let r = 1; r < filteredDtRows.length; r++) {
         const row = filteredDtRows[r] || [];
@@ -1119,11 +1119,24 @@ async function processPartyPipeline(odFileObj, dtFileObj, summaryFileObj, partyC
         
         if (key !== "") {
             if (!dtDict.has(key)) {
+                // Pull calculated Item Cost & Tax/HSN from DT after GST Not Applicable & Rate calculations
+                const costVal = (row[58] !== undefined && String(row[58]).trim() !== "")
+                    ? row[58]
+                    : ((row[idxAX] !== undefined && String(row[idxAX]).trim() !== "")
+                        ? row[idxAX]
+                        : ((row[49] !== undefined && String(row[49]).trim() !== "")
+                            ? row[49]
+                            : (row[47] || "")));
+
+                const hsnVal = (row[25] !== undefined && String(row[25]).trim() !== "")
+                    ? row[25]
+                    : (row[idxAP] !== undefined && String(row[idxAP]).trim() !== "" ? String(row[idxAP]) : "");
+
                 dtDict.set(key, [
                     row[6] || "",   // Column G (index 6) -> New Invoice ID
                     row[17] || "",  // Column R (index 17) -> Quantity
-                    row[25] || "",  // Column Z (index 25) -> GST Rate / HSN
-                    row[58] || ""   // Column BG (index 58) -> Item Cost
+                    hsnVal,         // Column Z / AP -> HSN / Tax Rate
+                    costVal         // Column BG / AX / AV -> Item Cost / Calculated Rate
                 ]);
             }
         }
@@ -1160,7 +1173,7 @@ async function processPartyPipeline(odFileObj, dtFileObj, summaryFileObj, partyC
                 newCombinedRow[2] = dtInfo[0]; // New Invoice ID from DT
                 newCombinedRow[10] = dtInfo[1]; // Quantity from DT
                 newCombinedRow[14] = dtInfo[2]; // HSN from DT
-                newCombinedRow[11] = dtInfo[3]; // Item Cost from DT
+                newCombinedRow[11] = dtInfo[3]; // Calculated Item Cost / Rate from DT
             }
         }
         combinedRows.push(newCombinedRow);
@@ -2309,18 +2322,9 @@ let sepGeneratedZipName = "";
 function setupSeparateFile() {
     const sepDropzone = document.getElementById('sep-dropzone');
     const sepFileInput = document.getElementById('sep-file-input');
-    const simpleColChoice = document.getElementById('simple-col-choice');
     const btnSplitRun = document.getElementById('btn-split-run');
     
     if (!sepDropzone || !sepFileInput) return;
-
-    // Set initial display of SIMPLE column choice based on default checked radio
-    const initialModeInput = document.querySelector('input[name="split-mode"]:checked');
-    if (initialModeInput && initialModeInput.value === "1") {
-        if (simpleColChoice) simpleColChoice.style.display = "flex";
-    } else {
-        if (simpleColChoice) simpleColChoice.style.display = "none";
-    }
 
     // Dropzone Click
     sepDropzone.addEventListener('click', () => {
@@ -2353,22 +2357,6 @@ function setupSeparateFile() {
     // Radio button event listeners for split mode
     document.querySelectorAll('input[name="split-mode"]').forEach(radio => {
         radio.addEventListener('change', (e) => {
-            const mode = e.target.value;
-            if (mode === "1") {
-                simpleColChoice.style.display = "flex";
-            } else {
-                simpleColChoice.style.display = "none";
-            }
-            resetSplitButtonState();
-            if (sepParsedAOA) {
-                calculateSplitGroups();
-            }
-        });
-    });
-
-    // Radio button event listeners for SIMPLE mode column choice
-    document.querySelectorAll('input[name="simple-col"]').forEach(radio => {
-        radio.addEventListener('change', () => {
             resetSplitButtonState();
             if (sepParsedAOA) {
                 calculateSplitGroups();
@@ -2377,7 +2365,9 @@ function setupSeparateFile() {
     });
 
     // Run Split Trigger
-    btnSplitRun.addEventListener('click', runSeparateProcess);
+    if (btnSplitRun) {
+        btnSplitRun.addEventListener('click', runSeparateProcess);
+    }
 }
 
 // Reset the split button back to Split File action state
@@ -2445,20 +2435,17 @@ function calculateSplitGroups() {
     if (!sepParsedAOA || sepParsedAOA.length === 0) return;
 
     const splitModeInput = document.querySelector('input[name="split-mode"]:checked');
-    const simpleColInput = document.querySelector('input[name="simple-col"]:checked');
-    
     const splitMode = splitModeInput ? splitModeInput.value : "1";
-    const simpleCol = simpleColInput ? simpleColInput.value : "D";
 
     let headerRows = 2;
     let dataStartRow = 3;
-    let filterField = 3; // Default Column D (Index 3)
+    let filterField = 6; // Column G (Index 6)
     let nameSuffix = "-MYNTRA";
 
     if (splitMode === "1") {
         headerRows = 2;
         dataStartRow = 3;
-        filterField = (simpleCol === "G") ? 6 : 3; // G is Column G (Index 6), D is Column D (Index 3)
+        filterField = 6; // Column G (Index 6)
         nameSuffix = "-MYNTRA";
     } else if (splitMode === "2") {
         headerRows = 2;
@@ -6201,8 +6188,6 @@ function resetSeparateTab() {
 
     const defaultMode = document.querySelector('input[name="split-mode"][value="1"]');
     if (defaultMode) defaultMode.checked = true;
-    const defaultCol = document.querySelector('input[name="simple-col"][value="D"]');
-    if (defaultCol) defaultCol.checked = true;
 
     showToast("Separate tab cleaned & reset.", "success");
 }
