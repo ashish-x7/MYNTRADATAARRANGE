@@ -2963,18 +2963,63 @@ function calculateRenameResults() {
         let renameCode = "";
 
         if (useP2Method) {
-            // OPTION A: P2 Value direct database match or fallback
+            // OPTION A: P2 Value direct database match (supports main name & bracket alias names) or fallback
             if (fileObj.p2Value !== "") {
-                const findName = fileObj.p2Value.toUpperCase().replace(/[\s\-_.]/g, "");
+                const rawP2 = String(fileObj.p2Value).trim();
+                const normP2 = rawP2.toUpperCase().replace(/[^A-Z0-9]/g, "");
                 let partyCodeMatch = "";
 
-                // Loop through Google sheet synced party data
-                for (let i = 0; i < partyData.length; i++) {
-                    const item = partyData[i];
-                    if (item.partyCode) {
-                        const arrName = item.partyCode.toUpperCase().replace(/[\s\-_.]/g, "");
-                        if (arrName.indexOf(findName) !== -1 || findName.indexOf(arrName) !== -1) {
-                            partyCodeMatch = String(item.code).trim();
+                if (normP2 !== "") {
+                    // Loop through Google sheet synced party data
+                    for (let i = 0; i < partyData.length; i++) {
+                        const item = partyData[i];
+                        if (!item) continue;
+
+                        const itemCode = String(item.code || "").trim();
+                        const normCode = itemCode.toUpperCase().replace(/[^A-Z0-9]/g, "");
+                        const fullPartyCode = String(item.partyCode || "").trim();
+
+                        // 1. Direct match with numeric/code (e.g., P2 contains "178")
+                        if (normCode !== "" && normP2 === normCode) {
+                            partyCodeMatch = itemCode;
+                            break;
+                        }
+
+                        // 2. Extract bracket alias names, e.g. "CB-COLEBROOK" from "178-COLEBROOK(CB-COLEBROOK)"
+                        const bracketMatches = [];
+                        const bracketRegex = /\(([^)]+)\)/g;
+                        let match;
+                        while ((match = bracketRegex.exec(fullPartyCode)) !== null) {
+                            if (match[1]) {
+                                bracketMatches.push(match[1].trim());
+                            }
+                        }
+
+                        // Check bracket alias names match
+                        let matchedInBracket = false;
+                        for (let b = 0; b < bracketMatches.length; b++) {
+                            const normBracket = bracketMatches[b].toUpperCase().replace(/[^A-Z0-9]/g, "");
+                            if (normBracket !== "" && (normBracket === normP2 || (normP2.length >= 3 && normBracket.indexOf(normP2) !== -1) || (normBracket.length >= 3 && normP2.indexOf(normBracket) !== -1))) {
+                                partyCodeMatch = itemCode;
+                                matchedInBracket = true;
+                                break;
+                            }
+                        }
+                        if (matchedInBracket) break;
+
+                        // 3. Check main name outside brackets (e.g. "COLEBROOK" from "178-COLEBROOK(CB-COLEBROOK)")
+                        const outsideBracketStr = fullPartyCode.replace(/\([^)]*\)/g, "").trim();
+                        const normOutside = outsideBracketStr.toUpperCase().replace(/[^A-Z0-9]/g, "");
+
+                        if (normOutside !== "" && (normOutside === normP2 || (normP2.length >= 3 && normOutside.indexOf(normP2) !== -1) || (normOutside.length >= 3 && normP2.indexOf(normOutside) !== -1))) {
+                            partyCodeMatch = itemCode;
+                            break;
+                        }
+
+                        // 4. Fallback full string match (without brackets)
+                        const normFull = fullPartyCode.toUpperCase().replace(/[^A-Z0-9]/g, "");
+                        if (normFull !== "" && (normFull.indexOf(normP2) !== -1 || normP2.indexOf(normFull) !== -1)) {
+                            partyCodeMatch = itemCode;
                             break;
                         }
                     }
@@ -2983,7 +3028,7 @@ function calculateRenameResults() {
                 if (partyCodeMatch !== "") {
                     renameCode = partyCodeMatch;
                 } else {
-                    renameCode = fileObj.p2Value; // Fallback to raw P2
+                    renameCode = fileObj.p2Value; // Fallback to raw P2 if no match found
                 }
             }
         } else {
