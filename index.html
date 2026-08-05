@@ -77,9 +77,15 @@
                 <section class="panel-left">
                     <!-- Dropzone Card -->
                     <div class="card glass upload-card">
-                        <div class="card-header">
-                            <h2>Upload Files</h2>
-                            <span class="info-tag">ZIP, folders & files</span>
+                        <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <h2>Upload Files</h2>
+                                <span class="info-tag">ZIP, folders & files</span>
+                            </div>
+                            <button class="btn-reset-tab" id="btn-reset-processor" title="Clean & Reset Tab">
+                                <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
+                                Clean & Reset
+                            </button>
                         </div>
                         
                         <div class="dropzone" id="dropzone">
@@ -378,23 +384,60 @@
             <div class="app-grid">
                 <!-- Left Panel: Upload & Action -->
                 <section class="panel-left">
+                    <!-- Mode Selector: Group Files vs Process Folders -->
+                    <div class="sub-tab-navigation" style="margin-bottom: 1rem; display: flex; gap: 0.5rem; background: rgba(0,0,0,0.02); padding: 0.35rem; border-radius: 12px; border: 1px solid var(--panel-border);">
+                        <button class="sub-tab-btn active" id="fld-mode-files-btn" type="button" style="flex: 1; text-align: center; justify-content: center; display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.5rem 0.8rem; border-radius: 8px; border: none; font-size: 0.8rem; font-weight: 600; cursor: pointer; background: transparent; color: var(--text-secondary); transition: all 0.2s;">
+                            <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                            Group Files
+                        </button>
+                        <button class="sub-tab-btn" id="fld-mode-folders-btn" type="button" style="flex: 1; text-align: center; justify-content: center; display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.5rem 0.8rem; border-radius: 8px; border: none; font-size: 0.8rem; font-weight: 600; cursor: pointer; background: transparent; color: var(--text-secondary); transition: all 0.2s;">
+                            <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+                            Process Folders
+                        </button>
+                    </div>
+
                     <div class="card glass upload-card">
-                        <div class="card-header">
-                            <h2>Upload Files to Group</h2>
-                            <span class="info-tag">Excel & CSV files</span>
+                        <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <h2 id="fld-upload-title">Upload Files to Group</h2>
+                                <span class="info-tag">Excel & CSV files</span>
+                            </div>
+                            <button class="btn-reset-tab" id="btn-reset-folder-create" title="Clean & Reset Tab">
+                                <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
+                                Clean & Reset
+                            </button>
                         </div>
                         <div class="dropzone" id="fld-dropzone">
                             <input type="file" id="fld-file-input" multiple accept=".xlsx,.xls,.csv" class="hidden-input">
+                            <input type="file" id="fld-folder-input" webkitdirectory directory multiple class="hidden-input" style="display: none;">
                             <div class="dropzone-content">
                                 <div class="upload-icon">
                                     <svg viewBox="0 0 24 24" width="40" height="40" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
                                 </div>
                                 <h3 id="fld-file-label">Drag & Drop files here</h3>
-                                <p>Supports .xlsx, .xls, .csv files</p>
+                                <p id="fld-file-support-text">Supports .xlsx, .xls, .csv files</p>
                                 <button class="btn btn-secondary" id="btn-fld-select-files" style="margin-top: 10px;">Select Files</button>
                             </div>
                         </div>
                     </div>
+
+                    <!-- Selected Files Count and List Box -->
+                    <div class="card glass" id="fld-selected-card" style="margin-top: 1rem; display: flex; flex-direction: column; display: none;">
+                        <div class="card-header" style="padding: 0.6rem 0.85rem; font-size: 0.8rem; font-weight: 600;">
+                            <div style="display: flex; align-items: center; gap: 0.4rem;">
+                                <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="color: var(--primary);"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
+                                <span>Selected Files (<span id="fld-selected-count">0</span>)</span>
+                            </div>
+                            <button class="btn-clear" id="btn-fld-clear" style="background: none; border: none; font-size: 0.72rem; color: var(--color-danger); cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 3px;">
+                                <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                                Clear
+                            </button>
+                        </div>
+                        <div id="fld-selected-list" style="max-height: 180px; overflow-y: auto; padding: 0.5rem; display: flex; flex-direction: column; gap: 0.35rem; font-size: 0.75rem;">
+                            <!-- File list generated dynamically -->
+                        </div>
+                    </div>
+
 
                     <button class="btn btn-primary btn-glow hidden" id="btn-fld-run" style="width: 100%; padding: 0.7rem; font-size: 0.9rem; justify-content: center;">
                         <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 5px;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
@@ -458,8 +501,12 @@
                 <section class="panel-left">
                     <!-- Add Record Card -->
                     <div class="card glass">
-                        <div class="card-header">
+                        <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
                             <h2>Add New Party</h2>
+                            <button class="btn-reset-tab" id="btn-reset-database" title="Clean & Reset Tab">
+                                <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
+                                Clean & Reset
+                            </button>
                         </div>
                         <form id="form-add-party" style="padding: 0.85rem; display: flex; flex-direction: column; gap: 0.8rem; margin: 0;">
                             <div class="select-group">
@@ -531,9 +578,15 @@
                 <section class="panel-left">
                     <!-- Upload Card -->
                     <div class="card glass upload-card">
-                        <div class="card-header">
-                            <h2>Upload File to Split</h2>
-                            <span class="info-tag">Merge Details / Summary / Tax</span>
+                        <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <h2>Upload File to Split</h2>
+                                <span class="info-tag">Merge Details / Summary / Tax</span>
+                            </div>
+                            <button class="btn-reset-tab" id="btn-reset-separate" title="Clean & Reset Tab">
+                                <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
+                                Clean & Reset
+                            </button>
                         </div>
                         <div class="dropzone" id="sep-dropzone">
                             <input type="file" id="sep-file-input" accept=".xlsx,.xls" class="hidden-input">
@@ -557,7 +610,7 @@
                                 <input type="radio" name="split-mode" value="1" checked>
                                 <div class="split-option-content">
                                     <strong>SIMPLE</strong>
-                                    <span>Choose Column D or G</span>
+                                    <span>Column G</span>
                                 </div>
                             </label>
                             <label class="split-option">
@@ -581,17 +634,6 @@
                                     <span>Column A</span>
                                 </div>
                             </label>
-
-                            <!-- Sub-option for SIMPLE mode -->
-                            <div id="simple-col-choice" style="padding: 0.5rem 0.75rem; background: rgba(124,58,237,0.04); border-radius: 10px; border: 1px solid rgba(124,58,237,0.1); display: flex; gap: 0.75rem; align-items: center;">
-                                <span style="font-size: 0.78rem; color: var(--text-secondary); font-weight: 500;">Filter Column:</span>
-                                <label style="display: flex; align-items: center; gap: 0.3rem; cursor: pointer; font-size: 0.82rem; font-weight: 600;">
-                                    <input type="radio" name="simple-col" value="D" checked> D
-                                </label>
-                                <label style="display: flex; align-items: center; gap: 0.3rem; cursor: pointer; font-size: 0.82rem; font-weight: 600;">
-                                    <input type="radio" name="simple-col" value="G"> G
-                                </label>
-                            </div>
                         </div>
                     </div>
 
@@ -657,9 +699,15 @@
                 <section class="panel-left">
                     <!-- Upload Card -->
                     <div class="card glass upload-card">
-                        <div class="card-header">
-                            <h2>Upload Files to Rename</h2>
-                            <span class="info-tag">Excel & CSV files</span>
+                        <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <h2>Upload Files to Rename</h2>
+                                <span class="info-tag">Excel & CSV files</span>
+                            </div>
+                            <button class="btn-reset-tab" id="btn-reset-rename" title="Clean & Reset Tab">
+                                <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
+                                Clean & Reset
+                            </button>
                         </div>
                         <div class="dropzone" id="ren-dropzone">
                             <input type="file" id="ren-file-input" multiple accept=".xlsx,.xls,.csv" class="hidden-input">
@@ -690,7 +738,7 @@
                                 <input type="radio" name="ren-method" value="no">
                                 <div class="split-option-content">
                                     <strong>Option B: Scan Column G</strong>
-                                    <span>Searches Column G cells for non-CGJ1 codes</span>
+                                    <span>Searches Column G cells for TaxReportData codes</span>
                                 </div>
                             </label>
                         </div>
@@ -758,9 +806,15 @@
                 <section class="panel-left">
                     <!-- Upload Card -->
                     <div class="card glass upload-card">
-                        <div class="card-header">
-                            <h2>Upload Files to Merge</h2>
-                            <span class="info-tag">Excel & CSV files</span>
+                        <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <h2>Upload Files to Merge</h2>
+                                <span class="info-tag">Excel & CSV files</span>
+                            </div>
+                            <button class="btn-reset-tab" id="btn-reset-merge" title="Clean & Reset Tab">
+                                <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
+                                Clean & Reset
+                            </button>
                         </div>
                         <div class="dropzone" id="mrg-dropzone">
                             <input type="file" id="mrg-file-input" multiple accept=".xlsx,.xls,.csv" class="hidden-input">
@@ -848,9 +902,15 @@
                 <section class="panel-left">
                     <!-- Upload Details Card -->
                     <div class="card glass upload-card" style="padding-bottom: 0.5rem;">
-                        <div class="card-header">
-                            <h2>1. Myntra Details File</h2>
-                            <span class="info-tag" id="err-details-tag" style="background: rgba(239, 68, 68, 0.1); color: #ef4444;">Required</span>
+                        <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <h2>1. Myntra Details File</h2>
+                                <span class="info-tag" id="err-details-tag" style="background: rgba(239, 68, 68, 0.1); color: #ef4444;">Required</span>
+                            </div>
+                            <button class="btn-reset-tab" id="btn-reset-myntra-error" title="Clean & Reset Tab">
+                                <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
+                                Clean & Reset
+                            </button>
                         </div>
                         <div class="dropzone" id="err-details-dropzone" style="padding: 1rem 0.5rem; min-height: 80px; margin-bottom: 0.2rem;">
                             <input type="file" id="err-details-file-input" accept=".xlsx,.xls,.csv" class="hidden-input">
@@ -964,9 +1024,15 @@
                 <!-- Left Panel: Upload & Config -->
                 <section class="panel-left">
                     <div class="card glass upload-card">
-                        <div class="card-header">
-                            <h2>Upload Invoice Files</h2>
-                            <span class="info-tag">Excel & CSV files</span>
+                        <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <h2>Upload Invoice Files</h2>
+                                <span class="info-tag">Excel & CSV files</span>
+                            </div>
+                            <button class="btn-reset-tab" id="btn-reset-invoice-error" title="Clean & Reset Tab">
+                                <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
+                                Clean & Reset
+                            </button>
                         </div>
                         <div class="dropzone" id="inv-dropzone">
                             <input type="file" id="inv-file-input" multiple accept=".xlsx,.xls,.csv" class="hidden-input">
@@ -1042,7 +1108,13 @@
                     <h2 style="font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 1.4rem; color: var(--text-primary); display: flex; align-items: center; gap: 0.6rem;">
                         <i class="fa-solid fa-list-check text-purple"></i> Error Dispute Tracker
                     </h2>
-                    <span id="trackerSyncBadge" class="badge" style="background: rgba(220, 38, 38, 0.1); color: var(--color-error); padding: 0.25rem 0.6rem; border-radius: 20px; font-size: 0.8rem; font-weight: 600;">Connecting...</span>
+                    <div style="display: flex; align-items: center; gap: 0.75rem;">
+                        <button class="btn-reset-tab" id="btn-reset-error-tracker" title="Clean & Reset Tab">
+                            <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
+                            Clean & Reset
+                        </button>
+                        <span id="trackerSyncBadge" class="badge" style="background: rgba(220, 38, 38, 0.1); color: var(--color-error); padding: 0.25rem 0.6rem; border-radius: 20px; font-size: 0.8rem; font-weight: 600;">Connecting...</span>
+                    </div>
                 </div>
 
                 <!-- Tracker Stats Cards Grid -->
