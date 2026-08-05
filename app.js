@@ -758,7 +758,42 @@ function getPartyCode(odFileObj) {
         }
     }
     
-    // 3. Fallback: check database or active values
+    // 3. Fallback: Check if path or file name contains known party names (case-insensitive & bracket-aware)
+    const combinedPathName = `${odFileObj.path || ''} ${odFileObj.name || ''}`;
+    const normSearchStr = combinedPathName.toUpperCase().replace(/[^A-Z0-9]/g, "");
+
+    if (normSearchStr !== "") {
+        for (let i = 0; i < partyData.length; i++) {
+            const item = partyData[i];
+            if (!item || !item.code) continue;
+
+            const itemCode = String(item.code).trim();
+            const fullPartyCode = String(item.partyCode || "").trim();
+
+            // Extract bracket names
+            const bracketMatches = [];
+            const bracketRegex = /\(([^)]+)\)/g;
+            let match;
+            while ((match = bracketRegex.exec(fullPartyCode)) !== null) {
+                if (match[1]) bracketMatches.push(match[1].trim());
+            }
+
+            for (const b of bracketMatches) {
+                const normB = b.toUpperCase().replace(/[^A-Z0-9]/g, "");
+                if (normB.length >= 3 && normSearchStr.indexOf(normB) !== -1) {
+                    return itemCode;
+                }
+            }
+
+            // Main name without code prefix and without brackets
+            const mainNameStr = fullPartyCode.replace(/\([^)]*\)/g, "").replace(/^\d+[\s\-_.]*/, "").trim();
+            const normMain = mainNameStr.toUpperCase().replace(/[^A-Z0-9]/g, "");
+            if (normMain.length >= 3 && normSearchStr.indexOf(normMain) !== -1) {
+                return itemCode;
+            }
+        }
+    }
+
     return "PartyCode";
 }
 
