@@ -1978,7 +1978,18 @@ async function downloadAllAsZip() {
         });
         const partyCodesArray = Array.from(processedParties);
         const isBatch = partyCodesArray.length > 1;
-        let zipName = "myntra_data_arrange_bundle.zip";
+        let zipName = "";
+        if (uploadedZipBaseName) {
+            zipName = `${uploadedZipBaseName} process.zip`;
+        } else if (partyCodesArray.length > 0) {
+            if (partyCodesArray.length === 1) {
+                zipName = `${partyCodesArray[0]} process.zip`;
+            } else {
+                zipName = `${partyCodesArray[0]}-${partyCodesArray[partyCodesArray.length - 1]} process.zip`;
+            }
+        } else {
+            zipName = "myntra_data_arrange_process.zip";
+        }
         
         const keepStructure = toggleStructure.checked;
 
@@ -3586,7 +3597,7 @@ async function runMergeProcess() {
         let isSingle = (mrgUniqueGroups.length === 1);
         if (!isSingle) {
             mrgGeneratedZipBlob = await zip.generateAsync({ type: "blob" });
-            mrgGeneratedZipName = "ajio_murge_file.zip";
+            mrgGeneratedZipName = "myntra_merge_file.zip";
         }
 
         updateMrgProgress(100, "Success!");
