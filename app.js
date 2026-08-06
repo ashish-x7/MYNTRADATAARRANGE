@@ -2845,24 +2845,6 @@ function setupRenameFile() {
         radio.addEventListener('change', () => {
             resetRenameButtonState();
             if (renUploadedFiles.length > 0) {
-                const isP2 = radio.value === "yes";
-                if (isP2) {
-                    const hasInvalid = renUploadedFiles.some(f => !f.name.toLowerCase().includes("_seller_orders_report_"));
-                    if (hasInvalid) {
-                        showCustomAlert("Invalid file detected for Option A. Please upload the correct Seller Orders Report file.", () => {
-                            window.location.reload();
-                        });
-                        return;
-                    }
-                } else {
-                    const hasInvalid = renUploadedFiles.some(f => !f.name.toLowerCase().includes("taxreportdata"));
-                    if (hasInvalid) {
-                        showCustomAlert("Invalid file detected for Option B. Please upload the correct TaxReportData file.", () => {
-                            window.location.reload();
-                        });
-                        return;
-                    }
-                }
                 calculateRenameResults();
             }
         });
@@ -2889,56 +2871,6 @@ function resetRenameButtonState() {
     if (renFileLabel) {
         renFileLabel.textContent = "Drag & Drop files here";
     }
-}
-
-// Show custom modal alert matching application theme
-function showCustomAlert(message, onOk) {
-    let backdrop = document.getElementById('custom-alert-modal');
-    if (!backdrop) {
-        backdrop = document.createElement('div');
-        backdrop.id = 'custom-alert-modal';
-        backdrop.className = 'custom-modal-backdrop';
-        backdrop.innerHTML = `
-            <div class="custom-modal-card">
-                <div class="custom-modal-header">
-                    <div class="custom-modal-icon error">
-                        <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                            <circle cx="12" cy="12" r="10"></circle>
-                            <line x1="12" y1="8" x2="12" y2="12"></line>
-                            <line x1="12" y1="16" x2="12.01" y2="16"></line>
-                        </svg>
-                    </div>
-                    <h3 class="custom-modal-title">Invalid File Uploaded</h3>
-                </div>
-                <div class="custom-modal-body" id="custom-alert-message"></div>
-                <div class="custom-modal-footer">
-                    <button class="btn btn-primary" id="custom-alert-ok-btn" style="padding: 0.55rem 1.75rem; font-weight: 600; font-size: 0.9rem; border-radius: 8px; cursor: pointer; min-width: 90px;">
-                        OK
-                    </button>
-                </div>
-            </div>
-        `;
-        document.body.appendChild(backdrop);
-    }
-
-    const messageEl = backdrop.querySelector('#custom-alert-message');
-    const okBtn = backdrop.querySelector('#custom-alert-ok-btn');
-
-    if (messageEl) messageEl.textContent = message;
-
-    const newOkBtn = okBtn.cloneNode(true);
-    okBtn.parentNode.replaceChild(newOkBtn, okBtn);
-
-    newOkBtn.addEventListener('click', () => {
-        backdrop.classList.remove('show');
-        if (typeof onOk === 'function') {
-            onOk();
-        }
-    });
-
-    requestAnimationFrame(() => {
-        backdrop.classList.add('show');
-    });
 }
 
 // Handle selected rename files
@@ -2992,32 +2924,6 @@ async function handleRenFileSelection(files) {
             return;
         }
 
-        // Validate file names according to selected Rename Method (Option A vs Option B)
-        const methodInput = document.querySelector('input[name="ren-method"]:checked');
-        const isP2Method = methodInput ? (methodInput.value === "yes") : true;
-
-        if (isP2Method) {
-            // Option A (P2 Method): Requires "_Seller_Orders_Report_" in filename
-            const hasInvalidFile = flatFilesList.some(f => !f.name.toLowerCase().includes("_seller_orders_report_"));
-            if (hasInvalidFile) {
-                renProgress.classList.add('hidden');
-                showCustomAlert("Invalid file detected in Rename section. Please upload the correct Seller Orders Report file.", () => {
-                    window.location.reload();
-                });
-                return;
-            }
-        } else {
-            // Option B (Scan Column G): Requires "TaxReportData" in filename
-            const hasInvalidFile = flatFilesList.some(f => !f.name.toLowerCase().includes("taxreportdata"));
-            if (hasInvalidFile) {
-                renProgress.classList.add('hidden');
-                showCustomAlert("Invalid file detected in Rename section. Please upload the correct TaxReportData file.", () => {
-                    window.location.reload();
-                });
-                return;
-            }
-        }
-
         // Update the file label text on screen
         const renFileLabel = document.getElementById('ren-file-label');
         if (renFileLabel) {
@@ -3050,16 +2956,40 @@ async function handleRenFileSelection(files) {
                 p2Val = String(aoa[1][15]).trim();
             }
 
-            // Extract Column G value: column index 6, rows starting index 1, must contain "TaxReportData"
+            // Extract Column G value: column index 6 (or scan data rows/columns if empty)
             let colGVal = "";
             for (let r = 1; r < aoa.length; r++) {
                 const row = aoa[r];
-                if (row && row[6] !== undefined) {
+                if (row && row[6] !== undefined && row[6] !== null) {
                     const val = String(row[6]).trim();
-                    if (val !== "" && val.toLowerCase().includes("taxreportdata")) {
+                    const lowerVal = val.toLowerCase();
+                    // Skip header labels but keep CGJ1- and invoice values
+                    if (val !== "" && lowerVal !== "quantity" && lowerVal !== "description" && lowerVal !== "invoice number" && lowerVal !== "seller sku") {
                         colGVal = val;
                         break;
                     }
+                }
+            }
+
+            // Fallback: If Column G (index 6) was empty, scan rows 1..25 across columns 0..15
+            if (!colGVal) {
+                for (let r = 1; r < Math.min(aoa.length, 25); r++) {
+                    const row = aoa[r];
+                    if (!row) continue;
+                    for (let c = 0; c < Math.min(row.length, 15); c++) {
+                        if (row[c] !== undefined && row[c] !== null) {
+                            const val = String(row[c]).trim();
+                            const upperVal = val.toUpperCase();
+                            if (val !== "" && (upperVal.startsWith("CGJ1-") || val.includes('-') || /\d{2,4}/.test(val))) {
+                                const lowerVal = val.toLowerCase();
+                                if (!lowerVal.includes("invoice") && !lowerVal.includes("order") && !lowerVal.includes("description") && !lowerVal.includes("quantity")) {
+                                    colGVal = val;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    if (colGVal) break;
                 }
             }
 
@@ -3088,6 +3018,95 @@ async function handleRenFileSelection(files) {
         showToast("Error reading files: " + err.message, "error");
         renProgress.classList.add('hidden');
     }
+}
+
+// Helper: Extract party code for Option B (Column G / TaxReportData / EE Invoice No files)
+function extractCodeFromColG(colGVal, fileName) {
+    const cleanVal = String(colGVal || "").trim();
+
+    // 1. Check if cleanVal contains a direct match with partyData database codes (e.g. 225, 178, 139, 157, 221, etc.)
+    if (cleanVal !== "" && typeof partyData !== "undefined" && partyData.length > 0) {
+        for (let i = 0; i < partyData.length; i++) {
+            const item = partyData[i];
+            if (!item || !item.code) continue;
+            const codeStr = String(item.code).trim();
+            if (!codeStr) continue;
+
+            const codeRegex = new RegExp(`(?:S|\\b|-|_)${codeStr}(?:-|\\b|_|\\d)`, 'i');
+            if (codeRegex.test(cleanVal) || cleanVal.includes(codeStr)) {
+                return codeStr;
+            }
+        }
+    }
+
+    // 2. Pattern extractions from cleanVal
+    if (cleanVal !== "") {
+        const uppercaseVal = cleanVal.toUpperCase();
+
+        // Pattern A: MY27S225-183 -> extract "225" (S followed by 2-4 digits before hyphen)
+        const myntraInvoiceMatch = cleanVal.match(/S(\d{2,4})[-_]/i);
+        if (myntraInvoiceMatch) {
+            return myntraInvoiceMatch[1];
+        }
+
+        // Pattern B: Digits immediately preceding hyphen e.g. MY27S225-183 -> "225" or 178-INV -> "178"
+        const preHyphenMatch = cleanVal.match(/(\d{2,4})-(?=\d+)/);
+        if (preHyphenMatch) {
+            return preHyphenMatch[1];
+        }
+
+        // Pattern C: Starts with CGJ1- (e.g. CGJ1-178-INV001 -> extract "178")
+        if (uppercaseVal.startsWith("CGJ1-")) {
+            const parts = cleanVal.split('-');
+            if (parts.length > 1 && parts[1].trim() !== "") {
+                const secondPart = parts[1].trim();
+                return secondPart.length > 3 ? secondPart.slice(-3) : secondPart;
+            }
+        }
+
+        // Pattern D: Hyphenated value (e.g. 178-INV001 -> extract "178")
+        if (cleanVal.includes('-')) {
+            const parts = cleanVal.split('-');
+            const firstPart = parts[0].trim();
+            if (firstPart !== "" && firstPart.toUpperCase() !== "CGJ1") {
+                const numPart = firstPart.match(/\d+/);
+                if (numPart) {
+                    return numPart[0].length > 3 ? numPart[0].slice(-3) : numPart[0];
+                }
+                return firstPart.length > 3 ? firstPart.slice(-3) : firstPart;
+            } else if (parts.length > 1 && parts[1].trim() !== "") {
+                const secondPart = parts[1].trim();
+                const numPart = secondPart.match(/\d+/);
+                if (numPart) {
+                    return numPart[0].length > 3 ? numPart[0].slice(-3) : numPart[0];
+                }
+                return secondPart.length > 3 ? secondPart.slice(-3) : secondPart;
+            }
+        }
+
+        // Pattern E: Match numeric sequence of 2-4 digits
+        const numMatch = cleanVal.match(/\b\d{2,4}\b/);
+        if (numMatch) {
+            return numMatch[0];
+        }
+
+        // Fallback: Right 3 characters
+        return cleanVal.length >= 3 ? cleanVal.slice(-3) : cleanVal;
+    }
+
+    // 3. Fallback: Search filename for partyData database code
+    if (fileName && typeof partyData !== "undefined" && partyData.length > 0) {
+        for (let i = 0; i < partyData.length; i++) {
+            const item = partyData[i];
+            if (!item || !item.code) continue;
+            const codeStr = String(item.code).trim();
+            if (codeStr && fileName.includes(codeStr)) {
+                return codeStr;
+            }
+        }
+    }
+
+    return "";
 }
 
 // Calculate Rename codes & names based on selected Method
@@ -3172,10 +3191,10 @@ function calculateRenameResults() {
                 }
             }
         } else {
-            // OPTION B: Column G cell extraction
-            if (fileObj.colGValue !== "") {
-                const firstPart = fileObj.colGValue.split('-')[0].trim();
-                renameCode = firstPart.slice(-3); // Right 3 characters of first hyphen part
+            // OPTION B: Column G cell extraction (with smart CGJ1- & Party Database matching)
+            const extractedCode = extractCodeFromColG(fileObj.colGValue, fileObj.name);
+            if (extractedCode !== "") {
+                renameCode = extractedCode;
             }
         }
 
