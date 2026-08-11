@@ -1190,7 +1190,7 @@ async function processPartyPipeline(odFileObj, dtFileObj, summaryFileObj, partyC
         
         const newCombinedRow = new Array(18).fill("");
         newCombinedRow[0] = odRow[5] || ""; // Order ID (Col 6 / F)
-        newCombinedRow[1] = odRow[7] || ""; // Invoice ID (Col 8 / H)
+        newCombinedRow[1] = odRow[6] || ""; // Invoice ID (Col 7 / G)
         newCombinedRow[4] = odRow[8] || ""; // Shipment date (Col 9 / I)
         newCombinedRow[5] = odRow[8] || ""; // Invoice date (Col 9 / I)
         newCombinedRow[6] = "24AAECE9149B1ZU"; // GST ID Constant
