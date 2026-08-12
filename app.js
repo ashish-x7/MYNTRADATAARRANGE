@@ -800,11 +800,62 @@ function getPartyCode(odFileObj) {
 // Retrieve full party code name from local database cache (or build custom fallback)
 function getPartyCodeName(partyCode) {
     if (!partyCode) return "PartyCode";
-    const found = partyData.find(item => String(item.code).trim() === String(partyCode).trim());
+    const codeClean = String(partyCode).trim();
+
+    // 1. Direct code match in partyData
+    let found = partyData.find(item => item && String(item.code).trim() === codeClean);
+
+    // 2. Starts-with match in partyData (e.g. item.partyCode starts with "217-" or "217 ")
+    if (!found) {
+        found = partyData.find(item => item && item.partyCode && (
+            String(item.partyCode).trim().startsWith(`${codeClean}-`) ||
+            String(item.partyCode).trim().startsWith(`${codeClean} `) ||
+            String(item.partyCode).trim().startsWith(`${codeClean}_`)
+        ));
+    }
+
+    // 3. Substring match in partyData
+    if (!found) {
+        found = partyData.find(item => item && item.partyCode && String(item.partyCode).includes(codeClean));
+    }
+
     if (found && found.partyCode) {
         return found.partyCode;
     }
-    return `${partyCode}-Party`;
+
+    // 4. If not in database, check uploaded files path/filename for folder name (e.g. "217-VENDOR NAME")
+    if (typeof filesList !== "undefined" && filesList.length > 0) {
+        const partyFiles = filesList.filter(f => getPartyCode(f) === codeClean || f.partyCode === codeClean);
+        for (const f of partyFiles) {
+            // Check folder path segments
+            if (f.path && (f.path.includes('/') || f.path.includes('\\'))) {
+                const parts = f.path.split(/[\/\\]/);
+                for (let i = parts.length - 2; i >= 0; i--) {
+                    const segment = parts[i].trim();
+                    if (segment.startsWith(codeClean) && /[a-zA-Z]/.test(segment)) {
+                        return segment;
+                    }
+                }
+            }
+            // Check filename
+            if (f.name) {
+                const baseName = f.name.substring(0, f.name.lastIndexOf('.')) || f.name;
+                if (baseName.startsWith(codeClean) && /[a-zA-Z]/.test(baseName)) {
+                    const parts = baseName.split('-');
+                    if (parts.length >= 2) {
+                        return `${parts[0]}-${parts[1]}`;
+                    }
+                    return baseName;
+                }
+            }
+        }
+    }
+
+    // 5. Fallback: If codeClean already contains letters, return it; otherwise return codeClean
+    if (/[a-zA-Z]/.test(codeClean)) {
+        return codeClean;
+    }
+    return codeClean;
 }
 
 // Main Advanced Content Join & Process Logic (VBA 1 to 8 + Final Combined Join)
@@ -1081,7 +1132,7 @@ async function processPartyPipeline(odFileObj, dtFileObj, summaryFileObj, partyC
             row[idxAP] = 5;
             
             // Get AV (Selling Price) value as float
-            const valAV = parseFloat(String(row[idxAV] || "").replace(/,/g, "")) || 0;
+            const valAV = parseFloat(String(row[idxAV] !== undefined ? row[idxAV] : "").replace(/,/g, "")) || 0;
             
             // Helper functions for rounding matching Excel ROUND behavior
             const round0 = (v) => Math.round(v);
@@ -1099,18 +1150,18 @@ async function processPartyPipeline(odFileObj, dtFileObj, summaryFileObj, partyC
             // Check Billing State CJ (idxCJ)
             const stateVal = String(row[idxCJ] || "").toLowerCase().trim();
             if (stateVal === "gujarat") {
-                row[idxBI] = ""; // BI empty
+                row[idxBI] = "0"; // BI = 0 (IGST not used)
                 
                 // Calculate equivalent of: =ROUND((AV2-ROUND(AV2/1.05,4))/2,4)
                 const valBJ = round4((valAV - roundPart) / 2);
-                row[idxBJ] = valBJ; // BJ
-                row[idxBK] = valBJ; // BK (same value)
+                row[idxBJ] = valBJ; // BJ (CGST)
+                row[idxBK] = valBJ; // BK (SGST, same as CGST)
             } else {
                 // Calculate equivalent of: =ROUND(AV2-ROUND(AV2/1.05,4),4)
                 const valBI = round4(valAV - roundPart);
-                row[idxBI] = valBI; // BI
-                row[idxBJ] = ""; // BJ
-                row[idxBK] = ""; // BK
+                row[idxBI] = valBI; // BI (IGST)
+                row[idxBJ] = "0";   // BJ = 0 (CGST not used)
+                row[idxBK] = "0";   // BK = 0 (SGST not used)
             }
             
             // Apply highlights in original DT using dynamic indices
