@@ -1198,6 +1198,11 @@ async function processPartyPipeline(odFileObj, dtFileObj, summaryFileObj, partyC
     
     // Step 12: Master Combined Report Join (Run strictly after DT file changes & Rate/GST calculations)
     addLog(`[${partyCode}] Master Combined Step: Loading updated DT lookup dictionary...`, "info");
+    
+    // Ensure GST processing has completed before creating Combined PR file
+    // GST changes are already applied to filteredDtRows in Step 10
+    addLog(`[${partyCode}] GST processing complete. Proceeding with Combined PR file generation...`, "success");
+    
     const dtDict = new Map();
     for (let r = 1; r < filteredDtRows.length; r++) {
         const row = filteredDtRows[r] || [];
@@ -1206,17 +1211,24 @@ async function processPartyPipeline(odFileObj, dtFileObj, summaryFileObj, partyC
         if (key !== "") {
             if (!dtDict.has(key)) {
                 // Pull calculated Item Cost & Tax/HSN from DT after GST Not Applicable & Rate calculations
-                const costVal = (row[58] !== undefined && String(row[58]).trim() !== "")
-                    ? row[58]
-                    : ((row[idxAX] !== undefined && String(row[idxAX]).trim() !== "")
-                        ? row[idxAX]
-                        : ((row[49] !== undefined && String(row[49]).trim() !== "")
-                            ? row[49]
-                            : (row[47] || "")));
+                // Prioritize GST-calculated values (idxAX) over original values
+                let costVal = "";
+                if (row[idxAX] !== undefined && String(row[idxAX]).trim() !== "") {
+                    costVal = row[idxAX];
+                } else if (row[58] !== undefined && String(row[58]).trim() !== "") {
+                    costVal = row[58];
+                } else if (row[49] !== undefined && String(row[49]).trim() !== "") {
+                    costVal = row[49];
+                } else {
+                    costVal = row[47] || "";
+                }
 
-                const hsnVal = (row[25] !== undefined && String(row[25]).trim() !== "")
-                    ? row[25]
-                    : (row[idxAP] !== undefined && String(row[idxAP]).trim() !== "" ? String(row[idxAP]) : "");
+                let hsnVal = "";
+                if (row[25] !== undefined && String(row[25]).trim() !== "") {
+                    hsnVal = String(row[25]);
+                } else if (row[idxAP] !== undefined && String(row[idxAP]).trim() !== "") {
+                    hsnVal = String(row[idxAP]);
+                }
 
                 dtDict.set(key, [
                     row[6] || "",   // Column G (index 6) -> New Invoice ID
