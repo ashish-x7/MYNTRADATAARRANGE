@@ -101,6 +101,7 @@ const addPartyNameInput = document.getElementById('add-party-name');
 // Initialize Events
 document.addEventListener('DOMContentLoaded', () => {
     setupEventHandlers();
+    setupDeleteConfirmationModal();
     loadPartyData();
     setupSeparateFile();
     setupRenameFile();
@@ -224,15 +225,23 @@ function setupEventHandlers() {
     });
 
     // Modal Close handlers
-    btnCloseModal.addEventListener('click', () => {
-        inspectorModal.classList.remove('show');
-    });
+    if (btnCloseModal) {
+        btnCloseModal.addEventListener('click', () => {
+            if (inspectorModal) {
+                inspectorModal.classList.remove('show');
+                inspectorModal.classList.add('hidden');
+            }
+        });
+    }
 
-    inspectorModal.addEventListener('click', (e) => {
-        if (e.target === inspectorModal) {
-            inspectorModal.classList.remove('show');
-        }
-    });
+    if (inspectorModal) {
+        inspectorModal.addEventListener('click', (e) => {
+            if (e.target === inspectorModal) {
+                inspectorModal.classList.remove('show');
+                inspectorModal.classList.add('hidden');
+            }
+        });
+    }
 
     // Reset All
     btnClear.addEventListener('click', resetState);
@@ -307,6 +316,19 @@ function showToast(message, type = "success") {
     setTimeout(() => {
         toastElement.classList.remove('show');
     }, 3000);
+}
+
+// Helper to generate dynamic timestamped summary filename
+function getSummaryTimestampFilename() {
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    const day = pad(now.getDate());
+    const month = pad(now.getMonth() + 1);
+    const year = now.getFullYear();
+    const hours = pad(now.getHours());
+    const mins = pad(now.getMinutes());
+    const secs = pad(now.getSeconds());
+    return `myntra invoice summary ${day}-${month}-${year} ${hours}-${mins}-${secs}.xlsx`;
 }
 
 // Show/Hide Inline Progress Bar (no overlay)
@@ -1474,7 +1496,7 @@ async function processPartyPipeline(odFileObj, dtFileObj, summaryFileObj, partyC
         });
         addLog(`[${partyCode}] 2 MORE INVOICE duplicate file packaged.`, "success");
     }
-    
+
     if (!isBatchMode) {
         // Save SUMMARY file containing Party details in sheet 1, and Log details in sheet 2
         const partyCodeName = getPartyCodeName(partyCode);
@@ -1495,14 +1517,15 @@ async function processPartyPipeline(odFileObj, dtFileObj, summaryFileObj, partyC
         const summaryArrayBuffer = XLSX.write(summaryWB, { bookType: 'xlsx', type: 'array' });
         const summaryBlob = new Blob([summaryArrayBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
         
+        const summaryFileName = getSummaryTimestampFilename();
         filesList.push({
             id: nextId++,
-            name: `${partyCode}-SUMMARY.xlsx`,
-            path: `${partyCode}-SUMMARY.xlsx`,
+            name: `${partyCode}-${summaryFileName}`,
+            path: `${partyCode}-${summaryFileName}`,
             ext: "xlsx",
             originalFile: summaryBlob,
             category: "unmatched",
-            renamedName: "SUMMARY.xlsx",
+            renamedName: summaryFileName,
             partyCode: partyCode,
             partyRange: generatedRange,
             parsedAOA: [
@@ -1510,7 +1533,7 @@ async function processPartyPipeline(odFileObj, dtFileObj, summaryFileObj, partyC
                 [generatedRange]
             ]
         });
-        addLog(`[${partyCode}] SUMMARY.xlsx file generated.`, "success");
+        addLog(`[${partyCode}] "${summaryFileName}" generated.`, "success");
     }
     
     return {
@@ -1584,7 +1607,8 @@ async function processUploadedFiles() {
                 f.category !== "Combined" && 
                 f.name !== "PARTLY CANCEL ORDER.xlsx" && 
                 f.name !== "GST NOT APPLICABLE.xlsx" && 
-                f.name !== "2 MORE INVOICE.xlsx" &&
+                f.name !== "2 MORE INVOICE.xlsx" && 
+                !f.name.toLowerCase().includes("myntra invoice summary") &&
                 f.name !== "SUMMARY.xlsx" &&
                 !f.name.endsWith("-PARTLY CANCEL ORDER.xlsx") && 
                 !f.name.endsWith("-GST NOT APPLICABLE.xlsx") && 
@@ -1633,7 +1657,8 @@ async function processUploadedFiles() {
                 f.category !== "Combined" && 
                 f.name !== "PARTLY CANCEL ORDER.xlsx" && 
                 f.name !== "GST NOT APPLICABLE.xlsx" && 
-                f.name !== "2 MORE INVOICE.xlsx" &&
+                f.name !== "2 MORE INVOICE.xlsx" && 
+                !f.name.toLowerCase().includes("myntra invoice summary") &&
                 f.name !== "SUMMARY.xlsx" &&
                 !f.name.endsWith("-PARTLY CANCEL ORDER.xlsx") && 
                 !f.name.endsWith("-GST NOT APPLICABLE.xlsx") && 
@@ -1725,20 +1750,21 @@ async function processUploadedFiles() {
                 const summaryArrayBuffer = XLSX.write(summaryWB, { bookType: 'xlsx', type: 'array' });
                 const summaryBlob = new Blob([summaryArrayBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
                 
+                const summaryFileName = getSummaryTimestampFilename();
                 // Add ONE combined SUMMARY file at the root level (not per-party)
                 filesList.push({
                     id: nextId++,
-                    name: `BATCH-SUMMARY.xlsx`,
-                    path: `BATCH-SUMMARY.xlsx`,
+                    name: summaryFileName,
+                    path: summaryFileName,
                     ext: "xlsx",
                     originalFile: summaryBlob,
                     category: "unmatched",
-                    renamedName: "SUMMARY.xlsx",
+                    renamedName: summaryFileName,
                     partyCode: "__BATCH_ROOT__",
                     partyRange: "",
                     parsedAOA: ws1Rows
                 });
-                addLog(`Combined SUMMARY.xlsx generated containing logs for all ${batchMetrics.length} parties.`, "success");
+                addLog(`Combined "${summaryFileName}" generated containing logs for all ${batchMetrics.length} parties.`, "success");
             }
             
             updateProgress(92, "Building summary files...");
@@ -2019,8 +2045,10 @@ function updateStats() {
 async function downloadAllAsZip() {
     const outputFiles = filesList.filter(fileObj => {
         const cat = fileObj.category;
-        const rName = fileObj.renamedName;
+        const rName = fileObj.renamedName || "";
         return cat === "OD" || cat === "DT" || cat === "Combined" || 
+               rName.toLowerCase().includes("summary") ||
+               rName.startsWith("myntra invoice summary") ||
                rName === "SUMMARY.xlsx" || rName === "PARTLY CANCEL ORDER.xlsx" || 
                rName === "GST NOT APPLICABLE.xlsx" || rName === "2 MORE INVOICE.xlsx";
     });
@@ -2039,17 +2067,21 @@ async function downloadAllAsZip() {
         outputFiles.forEach(f => {
             if (f.partyCode && f.partyCode !== "__BATCH_ROOT__") processedParties.add(f.partyCode);
         });
-        const partyCodesArray = Array.from(processedParties);
+        const partyCodesArray = Array.from(processedParties).sort((a, b) => {
+            const numA = parseInt(a, 10);
+            const numB = parseInt(b, 10);
+            if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+            return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+        });
         const isBatch = partyCodesArray.length > 1;
         let zipName = "";
-        if (uploadedZipBaseName) {
+        
+        if (partyCodesArray.length === 1) {
+            zipName = `${partyCodesArray[0]} process.zip`;
+        } else if (partyCodesArray.length > 1) {
+            zipName = `${partyCodesArray[0]}-${partyCodesArray[partyCodesArray.length - 1]} process.zip`;
+        } else if (uploadedZipBaseName && !uploadedZipBaseName.includes("bundle") && !uploadedZipBaseName.includes("myntra_data_arrange")) {
             zipName = `${uploadedZipBaseName} process.zip`;
-        } else if (partyCodesArray.length > 0) {
-            if (partyCodesArray.length === 1) {
-                zipName = `${partyCodesArray[0]} process.zip`;
-            } else {
-                zipName = `${partyCodesArray[0]}-${partyCodesArray[partyCodesArray.length - 1]} process.zip`;
-            }
         } else {
             zipName = "myntra_data_arrange_process.zip";
         }
@@ -2084,19 +2116,21 @@ async function downloadAllAsZip() {
             const baseName = lastDot !== -1 ? filename.substring(0, lastDot) : filename;
             const extension = lastDot !== -1 ? filename.substring(lastDot) : "";
             
+            const isSummary = filename.toLowerCase().includes("summary") || filename.startsWith("myntra invoice summary");
+
             let targetPath = "";
             if (keepStructure) {
-                if (filename === "SUMMARY.xlsx" && fileObj.partyCode === "__BATCH_ROOT__") {
+                if (isSummary && fileObj.partyCode === "__BATCH_ROOT__") {
                     // Batch combined SUMMARY goes at the ZIP root
                     targetPath = filename;
-                } else if (filename === "SUMMARY.xlsx") {
+                } else if (isSummary) {
                     // Single mode SUMMARY goes under party folder
                     targetPath = `${baseFolder}/${filename}`;
                 } else {
                     targetPath = `${baseFolder}/${subFolder}/${filename}`;
                 }
             } else {
-                if (filename.startsWith(`${partyCode}-`)) {
+                if (isSummary || filename.startsWith(`${partyCode}-`)) {
                     targetPath = filename;
                 } else {
                     targetPath = `${partyCode}-${filename}`;
@@ -2106,7 +2140,9 @@ async function downloadAllAsZip() {
             let counter = 1;
             while (usedPaths.has(targetPath.toLowerCase())) {
                 if (keepStructure) {
-                    if (filename === "SUMMARY.xlsx") {
+                    if (isSummary && fileObj.partyCode === "__BATCH_ROOT__") {
+                        targetPath = `${baseName} (${counter})${extension}`;
+                    } else if (isSummary) {
                         targetPath = `${baseFolder}/${baseName} (${counter})${extension}`;
                     } else {
                         targetPath = `${baseFolder}/${subFolder}/${baseName} (${counter})${extension}`;
@@ -2283,35 +2319,36 @@ async function updatePartyRecord(oldCode, newCode, name) {
 async function deletePartyRecord(code) {
     if (!appsScriptUrl) return;
     
-    const confirmDelete = confirm(`Are you sure you want to delete party with Code "${code}"?`);
-    if (!confirmDelete) return;
-    
-    showLoading("Deleting record from Google Sheet...");
-    
-    try {
-        const response = await fetch(`${appsScriptUrl}?action=delete`, {
-            method: 'POST',
-            body: JSON.stringify({ code: code })
-        });
-        const result = await response.json();
-        
-        hideLoading();
-        if (result && result.status === "success") {
-            showToast(result.message || "Record deleted successfully!", "success");
-            // If deleting the active editing code
-            if (editingPartyCode === code) {
-                editingPartyCode = null;
+    showDeleteConfirmation({
+        title: "Delete Party Record",
+        message: `Are you sure you want to delete party with Code "${code}"? This will be removed from Google Sheet database.`,
+        onConfirm: async () => {
+            showLoading("Deleting record from Google Sheet...");
+            try {
+                const response = await fetch(`${appsScriptUrl}?action=delete`, {
+                    method: 'POST',
+                    body: JSON.stringify({ code: code })
+                });
+                const result = await response.json();
+                
+                hideLoading();
+                if (result && result.status === "success") {
+                    showToast(result.message || "Record deleted successfully!", "success");
+                    if (editingPartyCode === code) {
+                        editingPartyCode = null;
+                    }
+                    await loadPartyData();
+                } else {
+                    const errorMsg = result ? result.message : "Failed to delete record.";
+                    showToast(errorMsg, "error");
+                }
+            } catch (err) {
+                hideLoading();
+                console.error(err);
+                showToast("Failed to delete record: " + err.message, "error");
             }
-            await loadPartyData();
-        } else {
-            const errorMsg = result ? result.message : "Failed to delete record.";
-            showToast(errorMsg, "error");
         }
-    } catch (err) {
-        hideLoading();
-        console.error(err);
-        showToast("Failed to delete record: " + err.message, "error");
-    }
+    });
 }
 
 // Render dynamic table rows
@@ -2428,177 +2465,468 @@ let sepFileNamePrefix = "";
 let sepGeneratedZipBlob = null;
 let sepGeneratedZipName = "";
 
+// ==========================================
+// SEPARATE FILE TAB OPERATIONS (4 Dedicated Categories, 1-Hour Session, Full View)
+// ==========================================
+
+const SEP_CATEGORIES = {
+    simple: {
+        id: 'simple',
+        name: 'SIMPLE',
+        field: 6, // Column G
+        headerRows: 2,
+        dataStartRow: 3,
+        suffix: '-MYNTRA',
+        badgeClass: 'badge-od',
+        zipName: 'myntra_simple_separate.zip'
+    },
+    details: {
+        id: 'details',
+        name: 'DETAILS',
+        field: 3, // Column D
+        headerRows: 2,
+        dataStartRow: 3,
+        suffix: ' DETAILS SHEET MYNTRA',
+        badgeClass: 'badge',
+        zipName: 'myntra_details_separate.zip'
+    },
+    summary: {
+        id: 'summary',
+        name: 'SUMMARY',
+        field: 6, // Column G
+        headerRows: 2,
+        dataStartRow: 3,
+        suffix: ' SUMMARY SHEET MYNTRA',
+        badgeClass: 'badge',
+        zipName: 'myntra_summary_separate.zip'
+    },
+    tax: {
+        id: 'tax',
+        name: 'TAX SPLIT',
+        field: 0, // Column A
+        headerRows: 1,
+        dataStartRow: 2,
+        suffix: '',
+        badgeClass: 'badge-dt',
+        zipName: 'myntra_tax_separate.zip'
+    }
+};
+
+// Category state store
+let sepCategoryState = {
+    simple: { file: null, fileName: '', aoa: null, uniqueValues: [], groups: new Map() },
+    details: { file: null, fileName: '', aoa: null, uniqueValues: [], groups: new Map() },
+    summary: { file: null, fileName: '', aoa: null, uniqueValues: [], groups: new Map() },
+    tax: { file: null, fileName: '', aoa: null, uniqueValues: [], groups: new Map() }
+};
+
+let sepFullviewCategory = 'all'; // 'all', 'simple', 'details', 'summary', 'tax'
+let sepSessionTimerInterval = null;
+
+// IndexedDB Session Storage Config (1 Hour Expiry) for Separate Tab
+const SEP_DB_NAME = 'MyntraSeparateCacheDB';
+const SEP_DB_STORE = 'separateSession';
+const SEP_DB_VERSION = 1;
+const SEP_SESSION_EXPIRY_MS = 60 * 60 * 1000; // 1 Hour
+
+function openSeparateDB() {
+    return new Promise((resolve) => {
+        if (!window.indexedDB) {
+            resolve(null);
+            return;
+        }
+        try {
+            const req = indexedDB.open(SEP_DB_NAME, SEP_DB_VERSION);
+            req.onupgradeneeded = (e) => {
+                const db = e.target.result;
+                if (!db.objectStoreNames.contains(SEP_DB_STORE)) {
+                    db.createObjectStore(SEP_DB_STORE, { keyPath: 'id' });
+                }
+            };
+            req.onsuccess = (e) => resolve(e.target.result);
+            req.onerror = () => resolve(null);
+        } catch (e) {
+            resolve(null);
+        }
+    });
+}
+
+async function saveSeparateSessionToStorage() {
+    try {
+        const db = await openSeparateDB();
+        if (!db) return;
+
+        const hasAnyFile = Object.values(sepCategoryState).some(cat => cat.file !== null && cat.uniqueValues.length > 0);
+        if (!hasAnyFile) {
+            const tx = db.transaction([SEP_DB_STORE], 'readwrite');
+            tx.objectStore(SEP_DB_STORE).delete('currentSession');
+            hideSepSessionBanner();
+            return;
+        }
+
+        const serializedCats = {};
+        for (const [key, state] of Object.entries(sepCategoryState)) {
+            if (state.file) {
+                serializedCats[key] = {
+                    fileName: state.fileName,
+                    blob: state.file,
+                    uniqueValues: state.uniqueValues,
+                    groupsArray: Array.from(state.groups.entries())
+                };
+            }
+        }
+
+        const expiresAt = Date.now() + SEP_SESSION_EXPIRY_MS;
+        const sessionData = {
+            id: 'currentSession',
+            timestamp: Date.now(),
+            expiresAt: expiresAt,
+            categories: serializedCats
+        };
+
+        const tx = db.transaction([SEP_DB_STORE], 'readwrite');
+        tx.objectStore(SEP_DB_STORE).put(sessionData);
+        startSepSessionTimer(expiresAt);
+    } catch (err) {
+        console.warn("Separate IndexedDB save error:", err);
+    }
+}
+
+async function loadSeparateSessionFromStorage() {
+    try {
+        const db = await openSeparateDB();
+        if (!db) return;
+
+        const tx = db.transaction([SEP_DB_STORE], 'readonly');
+        const store = tx.objectStore(SEP_DB_STORE);
+        const req = store.get('currentSession');
+
+        req.onsuccess = async () => {
+            const data = req.result;
+            if (!data) return;
+
+            const now = Date.now();
+            if (now > data.expiresAt) {
+                clearSeparateSessionStorage();
+                return;
+            }
+
+            if (data.categories) {
+                let totalRestored = 0;
+                for (const [key, catData] of Object.entries(data.categories)) {
+                    if (catData && catData.blob) {
+                        let fileBlob = catData.blob;
+                        if (!(fileBlob instanceof Blob)) {
+                            fileBlob = new Blob([catData.blob]);
+                        }
+                        
+                        const groupsMap = new Map(catData.groupsArray || []);
+                        sepCategoryState[key] = {
+                            file: fileBlob,
+                            fileName: catData.fileName || '',
+                            aoa: null,
+                            uniqueValues: catData.uniqueValues || [],
+                            groups: groupsMap
+                        };
+
+                        // Update badge and label
+                        const badge = document.getElementById(`sep-badge-${key}`);
+                        const label = document.getElementById(`sep-file-label-${key}`);
+                        if (badge) badge.textContent = `${catData.uniqueValues.length} unique`;
+                        if (label) label.textContent = catData.fileName ? `Loaded: ${catData.fileName}` : 'Loaded';
+
+                        totalRestored += catData.uniqueValues.length;
+                    }
+                }
+
+                if (totalRestored > 0) {
+                    renderAllSeparatePreviews();
+                    startSepSessionTimer(data.expiresAt);
+                    showToast(`Restored separate files session (${totalRestored} splits) from 1-hour cache!`, "info");
+                }
+            }
+        };
+    } catch (err) {
+        console.warn("Separate IndexedDB load error:", err);
+    }
+}
+
+async function clearSeparateSessionStorage() {
+    try {
+        const db = await openSeparateDB();
+        if (!db) return;
+        const tx = db.transaction([SEP_DB_STORE], 'readwrite');
+        tx.objectStore(SEP_DB_STORE).delete('currentSession');
+        hideSepSessionBanner();
+    } catch (err) {
+        console.warn("Separate IndexedDB clear error:", err);
+    }
+}
+
+function startSepSessionTimer(expiresAt) {
+    const banner = document.getElementById('sep-session-banner');
+    const timerElem = document.getElementById('sep-session-timer');
+    if (!banner || !timerElem) return;
+
+    banner.classList.remove('hidden');
+
+    if (sepSessionTimerInterval) clearInterval(sepSessionTimerInterval);
+
+    const updateTimer = () => {
+        const remainingMs = expiresAt - Date.now();
+        if (remainingMs <= 0) {
+            timerElem.textContent = "Session expired";
+            clearInterval(sepSessionTimerInterval);
+            clearSeparateSessionStorage();
+            return;
+        }
+        const mins = Math.floor(remainingMs / (60 * 1000));
+        const secs = Math.floor((remainingMs % (60 * 1000)) / 1000);
+        timerElem.textContent = `Auto-clears in ${mins}m ${secs}s`;
+    };
+
+    updateTimer();
+    sepSessionTimerInterval = setInterval(updateTimer, 1000);
+}
+
+function hideSepSessionBanner() {
+    const banner = document.getElementById('sep-session-banner');
+    if (banner) banner.classList.add('hidden');
+    if (sepSessionTimerInterval) {
+        clearInterval(sepSessionTimerInterval);
+        sepSessionTimerInterval = null;
+    }
+}
+
 function setupSeparateFile() {
-    const sepDropzone = document.getElementById('sep-dropzone');
-    const sepFileInput = document.getElementById('sep-file-input');
-    const btnSplitRun = document.getElementById('btn-split-run');
-    
-    if (!sepDropzone || !sepFileInput) return;
+    // Setup dropzones for each category
+    ['simple', 'details', 'summary', 'tax'].forEach(catKey => {
+        const dropzone = document.getElementById(`sep-dropzone-${catKey}`);
+        const input = document.getElementById(`sep-file-input-${catKey}`);
 
-    // Dropzone Click
-    sepDropzone.addEventListener('click', () => {
-        sepFileInput.click();
-    });
+        if (dropzone && input) {
+            dropzone.addEventListener('click', () => input.click());
+            input.addEventListener('change', (e) => {
+                if (e.target.files && e.target.files[0]) {
+                    handleSepCategoryUpload(catKey, e.target.files[0]);
+                }
+            });
 
-    // File selection
-    sepFileInput.addEventListener('change', (e) => {
-        handleSepFileSelection(e.target.files[0]);
-    });
+            dropzone.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                dropzone.classList.add('dragover');
+            });
 
-    // Drag & Drop
-    sepDropzone.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        sepDropzone.classList.add('dragover');
-    });
+            dropzone.addEventListener('dragleave', () => {
+                dropzone.classList.remove('dragover');
+            });
 
-    sepDropzone.addEventListener('dragleave', () => {
-        sepDropzone.classList.remove('dragover');
-    });
-
-    sepDropzone.addEventListener('drop', (e) => {
-        e.preventDefault();
-        sepDropzone.classList.remove('dragover');
-        if (e.dataTransfer.files.length > 0) {
-            handleSepFileSelection(e.dataTransfer.files[0]);
+            dropzone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dropzone.classList.remove('dragover');
+                if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                    handleSepCategoryUpload(catKey, e.dataTransfer.files[0]);
+                }
+            });
         }
     });
 
-    // Radio button event listeners for split mode
-    document.querySelectorAll('input[name="split-mode"]').forEach(radio => {
-        radio.addEventListener('change', (e) => {
-            resetSplitButtonState();
-            if (sepParsedAOA) {
-                calculateSplitGroups();
-            }
+    // Top Summary Bar buttons
+    const btnSepAllFullview = document.getElementById('btn-sep-all-fullview');
+    const btnSepDownloadAllZip = document.getElementById('btn-sep-download-all-zip');
+    if (btnSepAllFullview) btnSepAllFullview.addEventListener('click', () => openSepFullViewModal('all'));
+    if (btnSepDownloadAllZip) btnSepDownloadAllZip.addEventListener('click', () => downloadSeparateZip('all'));
+
+    // Category Card buttons
+    const btnSimpleFullview = document.getElementById('btn-sep-simple-fullview');
+    const btnSimpleMoveToFolder = document.getElementById('btn-sep-simple-move-to-folder');
+    const btnSimpleDownloadZip = document.getElementById('btn-sep-simple-download-zip');
+    if (btnSimpleFullview) btnSimpleFullview.addEventListener('click', () => openSepFullViewModal('simple'));
+    if (btnSimpleMoveToFolder) btnSimpleMoveToFolder.addEventListener('click', moveSimpleToFolderCreate);
+    if (btnSimpleDownloadZip) btnSimpleDownloadZip.addEventListener('click', () => downloadSeparateZip('simple'));
+
+    const btnDetailsFullview = document.getElementById('btn-sep-details-fullview');
+    const btnDetailsDownloadZip = document.getElementById('btn-sep-details-download-zip');
+    if (btnDetailsFullview) btnDetailsFullview.addEventListener('click', () => openSepFullViewModal('details'));
+    if (btnDetailsDownloadZip) btnDetailsDownloadZip.addEventListener('click', () => downloadSeparateZip('details'));
+
+    const btnSummaryFullview = document.getElementById('btn-sep-summary-fullview');
+    const btnSummaryDownloadZip = document.getElementById('btn-sep-summary-download-zip');
+    if (btnSummaryFullview) btnSummaryFullview.addEventListener('click', () => openSepFullViewModal('summary'));
+    if (btnSummaryDownloadZip) btnSummaryDownloadZip.addEventListener('click', () => downloadSeparateZip('summary'));
+
+    const btnTaxFullview = document.getElementById('btn-sep-tax-fullview');
+    const btnTaxDownloadZip = document.getElementById('btn-sep-tax-download-zip');
+    if (btnTaxFullview) btnTaxFullview.addEventListener('click', () => openSepFullViewModal('tax'));
+    if (btnTaxDownloadZip) btnTaxDownloadZip.addEventListener('click', () => downloadSeparateZip('tax'));
+
+    // Full View Modal controls
+    const btnCloseSepFullview = document.getElementById('btn-close-sep-fullview');
+    const sepFullviewSearch = document.getElementById('sep-fullview-search');
+    if (btnCloseSepFullview) btnCloseSepFullview.addEventListener('click', closeSepFullViewModal);
+    if (sepFullviewSearch) sepFullviewSearch.addEventListener('input', renderSepFullViewModalRows);
+
+    document.querySelectorAll('.sep-filter-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.sep-filter-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            sepFullviewCategory = btn.getAttribute('data-category') || 'all';
+            renderSepFullViewModalRows();
         });
     });
 
-    // Run Split Trigger
-    if (btnSplitRun) {
-        btnSplitRun.addEventListener('click', runSeparateProcess);
+    // Start Separate Button
+    const btnStartSeparate = document.getElementById('btn-start-separate');
+    if (btnStartSeparate) {
+        btnStartSeparate.addEventListener('click', startSeparateProcess);
     }
+
+    // Restore 1-hour session from IndexedDB if available
+    loadSeparateSessionFromStorage();
 }
 
-// Reset the split button back to Split File action state
-function resetSplitButtonState() {
-    sepGeneratedZipBlob = null;
-    sepGeneratedZipName = "";
-    const btnSplitRun = document.getElementById('btn-split-run');
-    if (btnSplitRun) {
-        btnSplitRun.innerHTML = `
-            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="8" height="18" rx="2"></rect><rect x="14" y="3" width="8" height="18" rx="2"></rect></svg>
-            Split File
-        `;
-        btnSplitRun.style.background = ""; // Restore default style
-        btnSplitRun.style.borderColor = "";
-    }
-}
-
-// Handle selected separate file
-async function handleSepFileSelection(file) {
-    resetSplitButtonState();
+// Handle upload / selection for a specific category (Does NOT split immediately)
+async function handleSepCategoryUpload(catKey, file) {
     if (!file) return;
-    
+
     const ext = file.name.split('.').pop().toLowerCase();
     if (ext !== 'xlsx' && ext !== 'xls') {
         showToast("Please upload an Excel (.xlsx or .xls) file.", "error");
         return;
     }
 
-    sepFileObj = file;
-    const sepDropzone = document.getElementById('sep-dropzone');
-    const sepFileLabel = document.getElementById('sep-file-label');
-    sepFileLabel.textContent = `Selected: ${file.name}`;
-    
-    const dotIdx = file.name.lastIndexOf('.');
-    sepFileNamePrefix = dotIdx !== -1 ? file.name.substring(0, dotIdx) : file.name;
+    const catConfig = SEP_CATEGORIES[catKey];
+    if (!catConfig) return;
 
-    // Show spinner inside dropzone
-    const dropzoneContent = sepDropzone.querySelector('.dropzone-content');
-    const originalHTML = dropzoneContent.innerHTML;
-    dropzoneContent.innerHTML = `
-        <div class="spinner" style="width: 32px; height: 32px; margin: 0 auto 1rem auto; display: block; border-width: 2px;"></div>
-        <h3>Loading Excel File...</h3>
-        <p>Parsing spreadsheet data rows</p>
-    `;
+    // Save selected file in category state
+    sepCategoryState[catKey].file = file;
+    sepCategoryState[catKey].fileName = file.name;
+    sepCategoryState[catKey].aoa = null;
+    sepCategoryState[catKey].uniqueValues = [];
+    sepCategoryState[catKey].groups = new Map();
 
-    try {
-        // Read file using existing AOA parsing function
-        sepParsedAOA = await readExcelAsAOA(file);
-        
-        // Restore dropzone content
-        dropzoneContent.innerHTML = originalHTML;
-        document.getElementById('sep-file-label').textContent = `Loaded: ${file.name}`;
-        
-        showToast("Excel file parsed successfully!", "success");
-        calculateSplitGroups();
-    } catch (err) {
-        console.error(err);
-        dropzoneContent.innerHTML = originalHTML;
-        showToast("Failed to parse Excel: " + err.message, "error");
+    // Update UI on dropzone
+    const badge = document.getElementById(`sep-badge-${catKey}`);
+    const label = document.getElementById(`sep-file-label-${catKey}`);
+    if (badge) {
+        badge.textContent = "Ready to Split";
+        badge.style.background = "rgba(124, 58, 237, 0.12)";
+        badge.style.color = "var(--primary)";
     }
+    if (label) label.textContent = `Selected: ${file.name}`;
+
+    showToast(`"${file.name}" selected for ${catConfig.name}. Click "Start Separate" to process!`, "info");
 }
 
-// Calculate Groups based on selected Mode and columns
-function calculateSplitGroups() {
-    if (!sepParsedAOA || sepParsedAOA.length === 0) return;
+// Triggered when user clicks "Start Separate" button
+async function startSeparateProcess() {
+    const uploadedCats = Object.keys(SEP_CATEGORIES).filter(k => sepCategoryState[k].file !== null);
 
-    const splitModeInput = document.querySelector('input[name="split-mode"]:checked');
-    const splitMode = splitModeInput ? splitModeInput.value : "1";
-
-    let headerRows = 2;
-    let dataStartRow = 3;
-    let filterField = 6; // Column G (Index 6)
-    let nameSuffix = "-MYNTRA";
-
-    if (splitMode === "1") {
-        headerRows = 2;
-        dataStartRow = 3;
-        filterField = 6; // Column G (Index 6)
-        nameSuffix = "-MYNTRA";
-    } else if (splitMode === "2") {
-        headerRows = 2;
-        dataStartRow = 3;
-        filterField = 3; // Column D is Index 3
-        nameSuffix = " DETAILS SHEET MYNTRA";
-    } else if (splitMode === "3") {
-        headerRows = 2;
-        dataStartRow = 3;
-        filterField = 6; // Column G is Index 6
-        nameSuffix = " SUMMARY SHEET MYNTRA";
-    } else if (splitMode === "4") {
-        headerRows = 1;
-        dataStartRow = 2;
-        filterField = 0; // Column A is Index 0
-        nameSuffix = "";
+    if (uploadedCats.length === 0) {
+        showToast("Please upload at least one Excel file in the boxes on the left.", "warning");
+        return;
     }
 
-    sepGroups = new Map();
-    sepUniqueValues = [];
+    const sepProgress = document.getElementById('sep-progress');
+    const sepProgressPercent = document.getElementById('sep-progress-percent');
+    const sepProgressText = document.getElementById('sep-progress-text');
+    const sepProgressFill = document.getElementById('sep-progress-fill');
+    const btnStartSeparate = document.getElementById('btn-start-separate');
 
-    // Loop through data rows
-    for (let r = dataStartRow - 1; r < sepParsedAOA.length; r++) {
-        const row = sepParsedAOA[r];
-        if (!row) continue;
-        
-        const rawVal = row[filterField];
-        const cleanVal = cleanCell(rawVal).trim();
-        
-        if (cleanVal === "" || cleanVal.toLowerCase() === "warehouse code/name" || cleanVal.toLowerCase() === "party code" || cleanVal.toLowerCase() === "state code") {
-            continue; // Skip blanks or duplicate header rows
+    if (btnStartSeparate) btnStartSeparate.disabled = true;
+    if (sepProgress) sepProgress.classList.remove('hidden');
+
+    const updateProgress = (pct, txt) => {
+        if (sepProgressPercent) sepProgressPercent.textContent = `${Math.round(pct)}%`;
+        if (sepProgressFill) sepProgressFill.style.width = `${pct}%`;
+        if (sepProgressText) sepProgressText.textContent = txt;
+    };
+
+    updateProgress(10, "Starting separation pipeline...");
+    await new Promise(r => setTimeout(r, 40));
+
+    let totalSplitsAcrossAll = 0;
+
+    try {
+        for (let i = 0; i < uploadedCats.length; i++) {
+            const catKey = uploadedCats[i];
+            const catState = sepCategoryState[catKey];
+            const catConfig = SEP_CATEGORIES[catKey];
+
+            const stepBase = 10 + Math.round((i / uploadedCats.length) * 80);
+            updateProgress(stepBase, `Processing ${catConfig.name}: ${catState.fileName}...`);
+            await new Promise(r => setTimeout(r, 30));
+
+            // Parse AOA
+            const aoa = await readExcelAsAOA(catState.file);
+            if (!aoa || aoa.length === 0) {
+                continue;
+            }
+            catState.aoa = aoa;
+
+            const groups = new Map();
+            const uniqueValues = [];
+            const dataStartRow = catConfig.dataStartRow;
+            const filterField = catConfig.field;
+
+            for (let r = dataStartRow - 1; r < aoa.length; r++) {
+                const row = aoa[r];
+                if (!row) continue;
+
+                const rawVal = row[filterField];
+                const cleanVal = cleanCell(rawVal).trim();
+
+                if (cleanVal === "" || cleanVal.toLowerCase() === "warehouse code/name" || cleanVal.toLowerCase() === "party code" || cleanVal.toLowerCase() === "state code") {
+                    continue;
+                }
+
+                if (!groups.has(cleanVal)) {
+                    groups.set(cleanVal, []);
+                    uniqueValues.push(cleanVal);
+                }
+                groups.get(cleanVal).push(row);
+            }
+
+            uniqueValues.sort();
+            catState.uniqueValues = uniqueValues;
+            catState.groups = groups;
+            totalSplitsAcrossAll += uniqueValues.length;
+
+            // Update badge and label on dropzone
+            const badge = document.getElementById(`sep-badge-${catKey}`);
+            const label = document.getElementById(`sep-file-label-${catKey}`);
+            if (badge) {
+                badge.textContent = `${uniqueValues.length} unique`;
+                badge.style.background = "";
+                badge.style.color = "";
+            }
+            if (label) label.textContent = `Loaded: ${catState.fileName}`;
         }
 
-        if (!sepGroups.has(cleanVal)) {
-            sepGroups.set(cleanVal, []);
-            sepUniqueValues.push(cleanVal);
-        }
-        sepGroups.get(cleanVal).push(row);
+        updateProgress(95, "Rendering results & saving session...");
+        await new Promise(r => setTimeout(r, 40));
+
+        renderAllSeparatePreviews();
+        saveSeparateSessionToStorage();
+
+        updateProgress(100, "Done!");
+        showToast(`Separation completed! ${totalSplitsAcrossAll} unique split files generated.`, "success");
+
+        setTimeout(() => {
+            if (sepProgress) {
+                sepProgress.classList.add('hidden');
+                if (sepProgressPercent) sepProgressPercent.textContent = "0%";
+                if (sepProgressFill) sepProgressFill.style.width = "0%";
+            }
+            if (btnStartSeparate) btnStartSeparate.disabled = false;
+        }, 1000);
+
+    } catch (err) {
+        console.error(err);
+        showToast("Error processing separation: " + err.message, "error");
+        if (sepProgress) sepProgress.classList.add('hidden');
+        if (btnStartSeparate) btnStartSeparate.disabled = false;
     }
-
-    // Sort unique values alphabetically
-    sepUniqueValues.sort();
-
-    renderSeparatePreview(headerRows, nameSuffix, splitMode);
 }
 
 // Format date and time for filename stamp
@@ -2613,198 +2941,465 @@ function cleanFileNameString(str) {
     return str.replace(/[\\/:*?\"<>|]/g, "").trim();
 }
 
-// Render the separate preview table
-function renderSeparatePreview(headerRows, nameSuffix, splitMode) {
-    const sepUniqueCount = document.getElementById('sep-unique-count');
-    const sepPreviewTbody = document.getElementById('sep-preview-tbody');
-    const sepEmptyState = document.getElementById('sep-empty-state');
-    const sepTableContainer = document.getElementById('sep-table-container');
-    const btnSplitRun = document.getElementById('btn-split-run');
+// Render all preview cards in Right Panel
+function renderAllSeparatePreviews() {
+    const emptyState = document.getElementById('sep-empty-state');
+    const resultsContainer = document.getElementById('sep-results-container');
+    const totalSummaryBadge = document.getElementById('sep-total-summary-badge');
 
-    sepUniqueCount.textContent = `${sepUniqueValues.length} unique values found`;
-    sepPreviewTbody.innerHTML = '';
+    let totalSplits = 0;
+    let anyLoaded = false;
 
-    if (sepUniqueValues.length === 0) {
-        sepEmptyState.classList.remove('hidden');
-        sepTableContainer.classList.add('hidden');
-        btnSplitRun.classList.add('hidden');
-        return;
+    Object.keys(SEP_CATEGORIES).forEach(catKey => {
+        const state = sepCategoryState[catKey];
+        const card = document.getElementById(`card-sep-${catKey}`);
+        const tbody = document.getElementById(`tbody-sep-${catKey}`);
+        const countBadge = document.getElementById(`sep-count-${catKey}`);
+        const config = SEP_CATEGORIES[catKey];
+
+        if (state && state.file && state.uniqueValues.length > 0) {
+            anyLoaded = true;
+            totalSplits += state.uniqueValues.length;
+            if (card) card.classList.remove('hidden');
+            if (countBadge) countBadge.textContent = `${state.uniqueValues.length} unique value${state.uniqueValues.length === 1 ? '' : 's'}`;
+
+            if (tbody) {
+                tbody.innerHTML = '';
+                const dtStampPlaceholder = getDtStamp();
+
+                state.uniqueValues.forEach((val, idx) => {
+                    const rows = state.groups.get(val) || [];
+                    let outputName = "";
+                    if (catKey === 'tax') {
+                        const firstNum = val.split('-')[0] || val;
+                        outputName = `${firstNum}-Tax-${val}-MYNTYRA`;
+                    } else {
+                        outputName = `${val}${config.suffix}`;
+                    }
+                    outputName = cleanFileNameString(outputName);
+                    const displayFilename = `${outputName} ${dtStampPlaceholder}_${String(idx + 1).padStart(2, '0')}.xlsx`;
+
+                    const tr = document.createElement('tr');
+                    tr.className = `row-color-${idx % 7}`;
+                    tr.innerHTML = `
+                        <td><strong>${idx + 1}</strong></td>
+                        <td><span style="font-family: monospace; font-weight: 700; color: var(--text-primary); font-size: 0.78rem;">${val}</span></td>
+                        <td><span class="badge ${config.badgeClass}" style="font-weight: 700;">${rows.length} rows</span></td>
+                        <td><span style="color: var(--primary); font-weight: 500; font-size: 0.76rem;">${displayFilename}</span></td>
+                        <td style="text-align: center;">
+                            <div style="display: inline-flex; gap: 4px;">
+                                <button class="btn-action btn-inspect-split" title="Inspect first 50 rows" style="width: 24px; height: 24px; border-radius: 6px; border: none; background: rgba(124, 58, 237, 0.08); color: var(--primary); cursor: pointer;">
+                                    <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2" fill="none"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                                </button>
+                                <button class="btn-action btn-del-split" title="Delete this split group" style="width: 24px; height: 24px; border-radius: 6px; border: none; background: rgba(220, 38, 38, 0.08); color: var(--color-danger); cursor: pointer;">
+                                    <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2" fill="none"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                                </button>
+                            </div>
+                        </td>
+                    `;
+
+                    const btnInspect = tr.querySelector('.btn-inspect-split');
+                    if (btnInspect) {
+                        btnInspect.addEventListener('click', () => inspectSeparateGroup(catKey, val));
+                    }
+
+                    const btnDel = tr.querySelector('.btn-del-split');
+                    if (btnDel) {
+                        btnDel.addEventListener('click', () => {
+                            showDeleteConfirmation({
+                                title: `Delete "${val}" Split?`,
+                                message: `Are you sure you want to delete "${val}" (${rows.length} rows) from ${config.name}?`,
+                                onConfirm: () => removeSepGroup(catKey, val)
+                            });
+                        });
+                    }
+
+                    tbody.appendChild(tr);
+                });
+            }
+        } else {
+            if (card) card.classList.add('hidden');
+            if (tbody) tbody.innerHTML = '';
+        }
+    });
+
+    if (totalSummaryBadge) {
+        totalSummaryBadge.textContent = `${totalSplits} Total Unique Splits`;
     }
 
-    sepEmptyState.classList.add('hidden');
-    sepTableContainer.classList.remove('hidden');
-    btnSplitRun.classList.remove('hidden');
+    if (anyLoaded) {
+        if (emptyState) emptyState.classList.add('hidden');
+        if (resultsContainer) resultsContainer.classList.remove('hidden');
+    } else {
+        if (emptyState) emptyState.classList.remove('hidden');
+        if (resultsContainer) resultsContainer.classList.add('hidden');
+    }
 
-    const dtStampPlaceholder = getDtStamp(); // Static timestamp for display
+    const fullviewModal = document.getElementById('sep-fullview-modal');
+    if (fullviewModal && fullviewModal.classList.contains('show')) {
+        renderSepFullViewModalRows();
+    }
+}
 
-    sepUniqueValues.forEach((val, idx) => {
-        const rows = sepGroups.get(val);
-        let outputName = "";
-        
-        if (splitMode === "4") {
-            const firstNum = val.split('-')[0] || val;
-            outputName = `${firstNum}-Tax-${val}-MYNTYRA`;
-        } else {
-            outputName = `${val}${nameSuffix}`;
-        }
-        
-        // Clean name
-        outputName = cleanFileNameString(outputName);
-        const displayFilename = `${outputName} ${dtStampPlaceholder}_${String(idx + 1).padStart(2, '0')}.xlsx`;
+// Remove a specific split group
+function removeSepGroup(catKey, uniqueVal) {
+    const state = sepCategoryState[catKey];
+    if (!state) return;
 
-        const tr = document.createElement('tr');
-        tr.className = `row-color-${idx % 7}`;
-        tr.innerHTML = `
-            <td><strong>${idx + 1}</strong></td>
-            <td><span style="font-family: monospace; font-weight: 700; color: var(--text-primary);">${val}</span></td>
-            <td><span class="badge badge-od">${rows.length} rows</span></td>
-            <td><span style="color: var(--primary); font-weight: 500; font-size: 0.8rem;">${displayFilename}</span></td>
-        `;
-        sepPreviewTbody.appendChild(tr);
+    state.uniqueValues = state.uniqueValues.filter(v => v !== uniqueVal);
+    state.groups.delete(uniqueVal);
+
+    const badge = document.getElementById(`sep-badge-${catKey}`);
+    if (badge) badge.textContent = `${state.uniqueValues.length} unique`;
+
+    renderAllSeparatePreviews();
+    saveSeparateSessionToStorage();
+    showToast(`Split "${uniqueVal}" removed from ${catKey.toUpperCase()}.`, "info");
+}
+
+// Inspect first 50 rows of a split group in sheet inspector
+async function inspectSeparateGroup(catKey, uniqueVal) {
+    const state = sepCategoryState[catKey];
+    const config = SEP_CATEGORIES[catKey];
+    if (!state || !config) return;
+
+    const dataRows = state.groups.get(uniqueVal) || [];
+    let headers = [];
+
+    if (state.aoa && state.aoa.length >= config.headerRows) {
+        headers = state.aoa.slice(0, config.headerRows);
+    } else if (state.file) {
+        const fullAoa = await readExcelAsAOA(state.file);
+        state.aoa = fullAoa;
+        headers = fullAoa.slice(0, config.headerRows);
+    }
+
+    const sampleAOA = [...headers, ...dataRows.slice(0, 50)];
+    openRenFileInspector({
+        name: `${uniqueVal} (${config.name})`,
+        parsedAOA: sampleAOA,
+        fileObj: null
     });
 }
 
-// Run the split and compile process
-async function runSeparateProcess() {
-    if (!sepParsedAOA || sepUniqueValues.length === 0) return;
+// Move SIMPLE splits directly to Folder Create Tab
+async function moveSimpleToFolderCreate() {
+    const state = sepCategoryState.simple;
+    const config = SEP_CATEGORIES.simple;
 
-    const btnSplitRun = document.getElementById('btn-split-run');
-
-    // If ZIP is already generated in state, download it immediately
-    if (sepGeneratedZipBlob) {
-        const url = URL.createObjectURL(sepGeneratedZipBlob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = sepGeneratedZipName;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        
-        setTimeout(() => {
-            URL.revokeObjectURL(url);
-        }, 1000);
-
-        showToast("ZIP downloaded successfully!", "success");
+    if (!state || !state.file || state.uniqueValues.length === 0) {
+        showToast("No Simple split files available to move.", "error");
         return;
     }
 
-    const splitModeInput = document.querySelector('input[name="split-mode"]:checked');
-    const splitMode = splitModeInput ? splitModeInput.value : "1";
-    
     const sepProgress = document.getElementById('sep-progress');
     const sepProgressPercent = document.getElementById('sep-progress-percent');
     const sepProgressText = document.getElementById('sep-progress-text');
     const sepProgressFill = document.getElementById('sep-progress-fill');
 
-    // Disable split run button and show progress indicator
-    btnSplitRun.disabled = true;
-    sepProgress.classList.remove('hidden');
-
-    const updateSepProgress = (percent, text) => {
-        sepProgressPercent.textContent = `${Math.round(percent)}%`;
-        sepProgressFill.style.width = `${percent}%`;
-        if (text) sepProgressText.textContent = text;
+    if (sepProgress) sepProgress.classList.remove('hidden');
+    const updateProgress = (pct, txt) => {
+        if (sepProgressPercent) sepProgressPercent.textContent = `${Math.round(pct)}%`;
+        if (sepProgressFill) sepProgressFill.style.width = `${pct}%`;
+        if (sepProgressText) sepProgressText.textContent = txt;
     };
 
-    updateSepProgress(5, "Preparing split pipeline...");
-    await new Promise(r => setTimeout(r, 50));
+    updateProgress(15, "Generating Simple split Excel files for Folder Create...");
+    await new Promise(r => setTimeout(r, 40));
 
     try {
-        let headerRows = 2;
-        let nameSuffix = "-MYNTRA";
-
-        if (splitMode === "1") {
-            headerRows = 2;
-            nameSuffix = "-MYNTRA";
-        } else if (splitMode === "2") {
-            headerRows = 2;
-            nameSuffix = " DETAILS SHEET MYNTRA";
-        } else if (splitMode === "3") {
-            headerRows = 2;
-            nameSuffix = " SUMMARY SHEET MYNTRA";
-        } else if (splitMode === "4") {
-            headerRows = 1;
-            nameSuffix = "";
+        let headers = [];
+        if (state.aoa && state.aoa.length >= config.headerRows) {
+            headers = state.aoa.slice(0, config.headerRows);
+        } else {
+            const fullAoa = await readExcelAsAOA(state.file);
+            state.aoa = fullAoa;
+            headers = fullAoa.slice(0, config.headerRows);
         }
 
-        const headers = sepParsedAOA.slice(0, headerRows);
         const dtStamp = getDtStamp();
-        const zip = new JSZip();
+        const splitFilesForFolder = [];
 
-        for (let i = 0; i < sepUniqueValues.length; i++) {
-            const val = sepUniqueValues[i];
-            const dataRows = sepGroups.get(val);
-            
-            const fileProgress = 5 + Math.round((i / sepUniqueValues.length) * 85);
-            updateSepProgress(fileProgress, `Packaging file: ${val} (${i + 1}/${sepUniqueValues.length})...`);
-            await new Promise(r => setTimeout(r, 20));
+        for (let i = 0; i < state.uniqueValues.length; i++) {
+            const val = state.uniqueValues[i];
+            const dataRows = state.groups.get(val) || [];
 
-            // Combine headers and values
+            const pct = 15 + Math.round((i / state.uniqueValues.length) * 75);
+            updateProgress(pct, `Packaging: ${val} (${i + 1}/${state.uniqueValues.length})...`);
+            await new Promise(r => setTimeout(r, 10));
+
             const outputRows = [...headers, ...dataRows];
-
-            // Build new workbook using SheetJS
             const ws = XLSX.utils.aoa_to_sheet(outputRows);
             const wb = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
-            
+
             const arrayBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-
-            // Generate filename
-            let outputName = "";
-            if (splitMode === "4") {
-                const firstNum = val.split('-')[0] || val;
-                outputName = `${firstNum}-Tax-${val}-MYNTYRA`;
-            } else {
-                outputName = `${val}${nameSuffix}`;
-            }
-
-            outputName = cleanFileNameString(outputName);
+            const outputName = cleanFileNameString(`${val}${config.suffix}`);
             const finalName = `${outputName} ${dtStamp}_${String(i + 1).padStart(2, '0')}.xlsx`;
 
-            const blob = new Blob([arrayBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-            zip.file(finalName, blob);
+            const fileObj = new File([arrayBuffer], finalName, { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+            splitFilesForFolder.push(fileObj);
         }
 
-        updateSepProgress(92, "Generating ZIP package...");
-        await new Promise(r => setTimeout(r, 50));
-
-        // Save generated ZIP details in state variables instead of direct download trigger
-        sepGeneratedZipBlob = await zip.generateAsync({ type: "blob" });
-        const sepModeInput = document.querySelector('input[name="split-mode"]:checked');
-        const sepModeVal = sepModeInput ? sepModeInput.value : "1";
-        const sepZipNames = {
-            "1": "myntra_simple_seprate_bundle.zip",
-            "2": "myntra_details_seprate_bundle.zip",
-            "3": "myntra_summary_seprate_bundle.zip",
-            "4": "myntra_tax_seprate_bundle.zip"
-        };
-        sepGeneratedZipName = sepZipNames[sepModeVal] || `${sepFileNamePrefix}_Separated.zip`;
-
-        updateSepProgress(100, "Success!");
-        showToast("Files split successfully! Click Download ZIP to save.", "success");
-
+        updateProgress(100, "Done!");
         setTimeout(() => {
-            sepProgress.classList.add('hidden');
-            sepProgressPercent.textContent = "0%";
-            sepProgressFill.style.width = "0%";
-            sepProgressText.textContent = "Splitting files...";
-            
-            // Transform button to download action state
-            btnSplitRun.disabled = false;
-            btnSplitRun.innerHTML = `
-                <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 5px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-                Download Separated ZIP
-            `;
-            btnSplitRun.style.background = "var(--color-od)";
-            btnSplitRun.style.borderColor = "var(--color-od)";
-        }, 1200);
+            if (sepProgress) sepProgress.classList.add('hidden');
+        }, 800);
+
+        // Pass files to Folder Create
+        handleFldFileSelection(splitFilesForFolder);
+
+        // Switch to Folder Create Tab
+        const folderTabBtn = document.getElementById('btn-folder-create-tab') || document.querySelector('.tab-btn[data-tab="tab-folder-create"]');
+        if (folderTabBtn) folderTabBtn.click();
+
+        showToast(`${splitFilesForFolder.length} Simple split files transferred to Folder Create tab!`, "success");
 
     } catch (err) {
         console.error(err);
-        showToast("Error splitting files: " + err.message, "error");
-        sepProgress.classList.add('hidden');
-        btnSplitRun.disabled = false;
+        if (sepProgress) sepProgress.classList.add('hidden');
+        showToast("Error moving Simple splits to Folder Create: " + err.message, "error");
     }
+}
+
+// Download ZIP for a specific category or All categories
+async function downloadSeparateZip(category = 'all') {
+    const catsToZip = (category === 'all')
+        ? Object.keys(SEP_CATEGORIES)
+        : [category];
+
+    const totalUniqueCount = catsToZip.reduce((sum, k) => sum + (sepCategoryState[k] ? sepCategoryState[k].uniqueValues.length : 0), 0);
+
+    if (totalUniqueCount === 0) {
+        showToast("No split files available to download.", "error");
+        return;
+    }
+
+    const sepProgress = document.getElementById('sep-progress');
+    const sepProgressPercent = document.getElementById('sep-progress-percent');
+    const sepProgressText = document.getElementById('sep-progress-text');
+    const sepProgressFill = document.getElementById('sep-progress-fill');
+
+    if (sepProgress) sepProgress.classList.remove('hidden');
+    const updateProgress = (pct, txt) => {
+        if (sepProgressPercent) sepProgressPercent.textContent = `${Math.round(pct)}%`;
+        if (sepProgressFill) sepProgressFill.style.width = `${pct}%`;
+        if (sepProgressText) sepProgressText.textContent = txt;
+    };
+
+    updateProgress(10, "Building ZIP archive...");
+    await new Promise(r => setTimeout(r, 40));
+
+    try {
+        const zip = new JSZip();
+        const dtStamp = getDtStamp();
+        let processedCount = 0;
+
+        for (const catKey of catsToZip) {
+            const state = sepCategoryState[catKey];
+            const config = SEP_CATEGORIES[catKey];
+            if (!state || !state.file || state.uniqueValues.length === 0) continue;
+
+            let headers = [];
+            if (state.aoa && state.aoa.length >= config.headerRows) {
+                headers = state.aoa.slice(0, config.headerRows);
+            } else {
+                const fullAoa = await readExcelAsAOA(state.file);
+                state.aoa = fullAoa;
+                headers = fullAoa.slice(0, config.headerRows);
+            }
+
+            for (let i = 0; i < state.uniqueValues.length; i++) {
+                const val = state.uniqueValues[i];
+                const dataRows = state.groups.get(val) || [];
+
+                processedCount++;
+                const pct = 10 + Math.round((processedCount / totalUniqueCount) * 80);
+                updateProgress(pct, `Packaging [${config.name}]: ${val}...`);
+                await new Promise(r => setTimeout(r, 5));
+
+                const outputRows = [...headers, ...dataRows];
+                const ws = XLSX.utils.aoa_to_sheet(outputRows);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
+
+                const arrayBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+                let outputName = "";
+                if (catKey === 'tax') {
+                    const firstNum = val.split('-')[0] || val;
+                    outputName = `${firstNum}-Tax-${val}-MYNTYRA`;
+                } else {
+                    outputName = `${val}${config.suffix}`;
+                }
+                outputName = cleanFileNameString(outputName);
+                const finalName = `${outputName} ${dtStamp}_${String(i + 1).padStart(2, '0')}.xlsx`;
+
+                const blob = new Blob([arrayBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                
+                if (category === 'all' && catsToZip.length > 1) {
+                    zip.folder(config.name).file(finalName, blob);
+                } else {
+                    zip.file(finalName, blob);
+                }
+            }
+        }
+
+        updateProgress(95, "Generating ZIP file...");
+        await new Promise(r => setTimeout(r, 40));
+
+        const zipBlob = await zip.generateAsync({ type: "blob" });
+        const zipFileName = (category === 'all')
+            ? "myntra_all_separate_bundle.zip"
+            : (SEP_CATEGORIES[category]?.zipName || "myntra_separate.zip");
+
+        updateProgress(100, "Downloading!");
+
+        const url = URL.createObjectURL(zipBlob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = zipFileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+
+        setTimeout(() => {
+            URL.revokeObjectURL(url);
+            if (sepProgress) {
+                sepProgress.classList.add('hidden');
+                if (sepProgressPercent) sepProgressPercent.textContent = "0%";
+                if (sepProgressFill) sepProgressFill.style.width = "0%";
+            }
+        }, 1200);
+
+        showToast(`${zipFileName} downloaded successfully!`, "success");
+
+    } catch (err) {
+        console.error(err);
+        if (sepProgress) sepProgress.classList.add('hidden');
+        showToast("Error generating ZIP: " + err.message, "error");
+    }
+}
+
+// Open Full View Modal for Separate Tab
+function openSepFullViewModal(category = 'all') {
+    sepFullviewCategory = category;
+    const modal = document.getElementById('sep-fullview-modal');
+    const searchInput = document.getElementById('sep-fullview-search');
+
+    if (!modal) return;
+    if (searchInput) searchInput.value = '';
+
+    // Update active category filter button
+    document.querySelectorAll('.sep-filter-btn').forEach(btn => {
+        if (btn.getAttribute('data-category') === category) {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    });
+
+    renderSepFullViewModalRows();
+    modal.classList.add('show');
+    modal.classList.remove('hidden');
+}
+
+function closeSepFullViewModal() {
+    const modal = document.getElementById('sep-fullview-modal');
+    if (modal) {
+        modal.classList.remove('show');
+        modal.classList.add('hidden');
+    }
+}
+
+function renderSepFullViewModalRows() {
+    const tbody = document.getElementById('tbody-sep-fullview-files');
+    const countTag = document.getElementById('sep-fullview-count');
+    const searchInput = document.getElementById('sep-fullview-search');
+    const query = searchInput ? searchInput.value.trim().toLowerCase() : "";
+
+    if (!tbody) return;
+    tbody.innerHTML = '';
+
+    const list = [];
+    const cats = (sepFullviewCategory === 'all') ? Object.keys(SEP_CATEGORIES) : [sepFullviewCategory];
+    const dtStampPlaceholder = getDtStamp();
+
+    cats.forEach(catKey => {
+        const state = sepCategoryState[catKey];
+        const config = SEP_CATEGORIES[catKey];
+        if (state && state.file && state.uniqueValues.length > 0) {
+            state.uniqueValues.forEach((val, idx) => {
+                const rows = state.groups.get(val) || [];
+                let outputName = "";
+                if (catKey === 'tax') {
+                    const firstNum = val.split('-')[0] || val;
+                    outputName = `${firstNum}-Tax-${val}-MYNTYRA`;
+                } else {
+                    outputName = `${val}${config.suffix}`;
+                }
+                outputName = cleanFileNameString(outputName);
+                const displayFilename = `${outputName} ${dtStampPlaceholder}_${String(idx + 1).padStart(2, '0')}.xlsx`;
+
+                if (!query || val.toLowerCase().includes(query) || displayFilename.toLowerCase().includes(query) || config.name.toLowerCase().includes(query)) {
+                    list.push({
+                        catKey: catKey,
+                        categoryName: config.name,
+                        badgeClass: config.badgeClass,
+                        val: val,
+                        rowCount: rows.length,
+                        filename: displayFilename
+                    });
+                }
+            });
+        }
+    });
+
+    if (countTag) countTag.textContent = `${list.length} unique values`;
+
+    if (list.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-muted); padding: 2rem;">No matching split files found.</td></tr>`;
+        return;
+    }
+
+    list.forEach((item, idx) => {
+        const tr = document.createElement('tr');
+        tr.className = `row-color-${idx % 7}`;
+        tr.innerHTML = `
+            <td><strong>${idx + 1}</strong></td>
+            <td><span class="badge ${item.badgeClass}" style="font-weight: 700;">${item.categoryName}</span></td>
+            <td><span style="font-family: monospace; font-weight: 700; color: var(--text-primary); font-size: 0.78rem;">${item.val}</span></td>
+            <td><span class="badge ${item.badgeClass}">${item.rowCount} rows</span></td>
+            <td><span style="color: var(--primary); font-weight: 500; font-size: 0.76rem;">${item.filename}</span></td>
+            <td style="text-align: center;">
+                <div style="display: inline-flex; gap: 4px;">
+                    <button class="btn-action btn-inspect-split" title="Inspect first 50 rows" style="width: 24px; height: 24px; border-radius: 6px; border: none; background: rgba(124, 58, 237, 0.08); color: var(--primary); cursor: pointer;">
+                        <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2" fill="none"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                    </button>
+                    <button class="btn-action btn-del-split" title="Delete this split group" style="width: 24px; height: 24px; border-radius: 6px; border: none; background: rgba(220, 38, 38, 0.08); color: var(--color-danger); cursor: pointer;">
+                        <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2" fill="none"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                    </button>
+                </div>
+            </td>
+        `;
+
+        const btnInspect = tr.querySelector('.btn-inspect-split');
+        if (btnInspect) {
+            btnInspect.addEventListener('click', () => inspectSeparateGroup(item.catKey, item.val));
+        }
+
+        const btnDel = tr.querySelector('.btn-del-split');
+        if (btnDel) {
+            btnDel.addEventListener('click', () => {
+                showDeleteConfirmation({
+                    title: `Delete "${item.val}" Split?`,
+                    message: `Are you sure you want to delete "${item.val}" from ${item.categoryName}?`,
+                    onConfirm: () => removeSepGroup(item.catKey, item.val)
+                });
+            });
+        }
+
+        tbody.appendChild(tr);
+    });
 }
 
 // Helper to extract valid spreadsheet files from a ZIP Blob
@@ -2813,7 +3408,6 @@ async function extractSpreadsheetsFromZip(zipFile) {
     const promises = [];
     const filesFound = [];
     
-    // Extract digits from zip filename (e.g. "139.zip" -> "139", "INDO_139_PR.zip" -> "139")
     const zipName = zipFile.name;
     const zipDigitsMatch = zipName.match(/\d+/);
     const zipDigits = zipDigitsMatch ? zipDigitsMatch[0] : null;
@@ -2827,7 +3421,6 @@ async function extractSpreadsheetsFromZip(zipFile) {
                 const promise = zipEntry.async("blob").then((blob) => {
                     const filename = zipEntry.name.split('/').pop();
                     
-                    // Construct a virtual path for grouping if needed
                     let adjustedPath = relativePath;
                     const pathParts = relativePath.split('/');
                     let hasNumericFolder = false;
@@ -2863,61 +3456,413 @@ async function extractSpreadsheetsFromZip(zipFile) {
 // ==========================================
 
 // State Variables for Rename File tab
-let renUploadedFiles = []; // Array of { id, name, fileObj, ext, renameCode, renamedName, p2Value, colGValue }
+let renUploadedFiles = []; // Array of { id, name, fileObj, ext, methodType, renameCode, renamedName, p2Value, colGValue, parsedAOA }
+let renIsProcessed = false; // Tracks if user has clicked "Rename All Files"
 let renGeneratedZipBlob = null;
 let renGeneratedZipName = "";
 let renNextId = 1;
+let renActiveEditFile = null;
+let renFullviewCategory = 'all'; // 'all', 'p2', or 'g'
+let renSessionTimerInterval = null;
 
-function setupRenameFile() {
-    const renDropzone = document.getElementById('ren-dropzone');
-    const renFileInput = document.getElementById('ren-file-input');
-    const btnRenameRun = document.getElementById('btn-rename-run');
-    
-    if (!renDropzone || !renFileInput) return;
+// IndexedDB Session Storage Config (1 Hour Expiry)
+const REN_DB_NAME = 'MyntraRenameCacheDB';
+const REN_DB_STORE = 'renameSession';
+const REN_DB_VERSION = 1;
+const REN_SESSION_EXPIRY_MS = 60 * 60 * 1000; // 1 Hour in ms
 
-    // Dropzone Click
-    renDropzone.addEventListener('click', () => {
-        renFileInput.click();
-    });
-
-    // File selection
-    renFileInput.addEventListener('change', (e) => {
-        handleRenFileSelection(e.target.files);
-    });
-
-    // Drag & Drop
-    renDropzone.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        renDropzone.classList.add('dragover');
-    });
-
-    renDropzone.addEventListener('dragleave', () => {
-        renDropzone.classList.remove('dragover');
-    });
-
-    renDropzone.addEventListener('drop', (e) => {
-        e.preventDefault();
-        renDropzone.classList.remove('dragover');
-        if (e.dataTransfer.files.length > 0) {
-            handleRenFileSelection(e.dataTransfer.files);
+function openRenameDB() {
+    return new Promise((resolve) => {
+        if (!window.indexedDB) {
+            resolve(null);
+            return;
+        }
+        try {
+            const req = indexedDB.open(REN_DB_NAME, REN_DB_VERSION);
+            req.onupgradeneeded = (e) => {
+                const db = e.target.result;
+                if (!db.objectStoreNames.contains(REN_DB_STORE)) {
+                    db.createObjectStore(REN_DB_STORE, { keyPath: 'id' });
+                }
+            };
+            req.onsuccess = (e) => resolve(e.target.result);
+            req.onerror = () => resolve(null);
+        } catch (e) {
+            resolve(null);
         }
     });
-
-    // Radio button event listeners for rename method choice
-    document.querySelectorAll('input[name="ren-method"]').forEach(radio => {
-        radio.addEventListener('change', () => {
-            resetRenameButtonState();
-            if (renUploadedFiles.length > 0) {
-                calculateRenameResults();
-            }
-        });
-    });
-
-    // Run Rename Trigger
-    btnRenameRun.addEventListener('click', runRenameProcess);
 }
 
-// Reset the rename button back to Rename Files action state
+async function saveRenameSessionToStorage() {
+    try {
+        const db = await openRenameDB();
+        if (!db) return;
+        
+        if (renUploadedFiles.length === 0) {
+            const tx = db.transaction([REN_DB_STORE], 'readwrite');
+            tx.objectStore(REN_DB_STORE).delete('currentSession');
+            hideSessionBanner();
+            return;
+        }
+
+        const serializedFiles = renUploadedFiles.map(f => ({
+            id: f.id,
+            name: f.name,
+            ext: f.ext,
+            methodType: f.methodType,
+            p2Value: f.p2Value,
+            colGValue: f.colGValue,
+            renameCode: f.renameCode,
+            renamedName: f.renamedName,
+            parsedAOA: f.parsedAOA ? f.parsedAOA.slice(0, 50) : null,
+            blob: f.fileObj // Blob stored directly in IndexedDB
+        }));
+
+        const expiresAt = Date.now() + REN_SESSION_EXPIRY_MS;
+        const sessionData = {
+            id: 'currentSession',
+            timestamp: Date.now(),
+            expiresAt: expiresAt,
+            isProcessed: renIsProcessed,
+            files: serializedFiles
+        };
+
+        const tx = db.transaction([REN_DB_STORE], 'readwrite');
+        tx.objectStore(REN_DB_STORE).put(sessionData);
+        startSessionTimer(expiresAt);
+    } catch (err) {
+        console.warn("IndexedDB save error:", err);
+    }
+}
+
+async function loadRenameSessionFromStorage() {
+    try {
+        const db = await openRenameDB();
+        if (!db) return;
+
+        const tx = db.transaction([REN_DB_STORE], 'readonly');
+        const store = tx.objectStore(REN_DB_STORE);
+        const req = store.get('currentSession');
+
+        req.onsuccess = async () => {
+            const data = req.result;
+            if (!data) return;
+
+            const now = Date.now();
+            if (now > data.expiresAt) {
+                // Expired (1 hour passed) -> clear from DB
+                clearRenameSessionStorage();
+                return;
+            }
+
+            // Restore files into renUploadedFiles
+            if (data.files && data.files.length > 0) {
+                renUploadedFiles = data.files.map(f => {
+                    let fileObj = f.blob;
+                    if (f.blob && !(f.blob instanceof Blob)) {
+                        fileObj = new Blob([f.blob]);
+                    }
+                    return {
+                        id: f.id,
+                        name: f.name,
+                        fileObj: fileObj,
+                        ext: f.ext,
+                        methodType: f.methodType || 'p2',
+                        p2Value: f.p2Value || '',
+                        colGValue: f.colGValue || '',
+                        renameCode: f.renameCode || '',
+                        renamedName: f.renamedName || f.name,
+                        parsedAOA: f.parsedAOA || null
+                    };
+                });
+
+                renIsProcessed = !!data.isProcessed;
+                renNextId = Math.max(...renUploadedFiles.map(f => f.id), 0) + 1;
+                updateRenUploadBadges();
+                renderRenameState();
+                startSessionTimer(data.expiresAt);
+                showToast(`Restored ${renUploadedFiles.length} files from 1-hour session!`, "info");
+            }
+        };
+    } catch (err) {
+        console.warn("IndexedDB load error:", err);
+    }
+}
+
+async function clearRenameSessionStorage() {
+    try {
+        const db = await openRenameDB();
+        if (!db) return;
+        const tx = db.transaction([REN_DB_STORE], 'readwrite');
+        tx.objectStore(REN_DB_STORE).delete('currentSession');
+        hideSessionBanner();
+    } catch (err) {
+        console.warn("IndexedDB clear error:", err);
+    }
+}
+
+function startSessionTimer(expiresAt) {
+    const banner = document.getElementById('ren-session-banner');
+    const timerElem = document.getElementById('ren-session-timer');
+    if (!banner || !timerElem) return;
+
+    banner.classList.remove('hidden');
+
+    if (renSessionTimerInterval) clearInterval(renSessionTimerInterval);
+
+    const updateTimer = () => {
+        const remainingMs = expiresAt - Date.now();
+        if (remainingMs <= 0) {
+            timerElem.textContent = "Session expired";
+            clearInterval(renSessionTimerInterval);
+            clearRenameSessionStorage();
+            return;
+        }
+        const mins = Math.floor(remainingMs / (60 * 1000));
+        const secs = Math.floor((remainingMs % (60 * 1000)) / 1000);
+        timerElem.textContent = `Auto-clears in ${mins}m ${secs}s`;
+    };
+
+    updateTimer();
+    renSessionTimerInterval = setInterval(updateTimer, 1000);
+}
+
+function hideSessionBanner() {
+    const banner = document.getElementById('ren-session-banner');
+    if (banner) banner.classList.add('hidden');
+    if (renSessionTimerInterval) {
+        clearInterval(renSessionTimerInterval);
+        renSessionTimerInterval = null;
+    }
+}
+
+function setupRenameFile() {
+    // P2 Elements
+    const renDropzoneP2 = document.getElementById('ren-dropzone-p2');
+    const renFileInputP2 = document.getElementById('ren-file-input-p2');
+    const btnRenP2Select = document.getElementById('btn-ren-p2-select');
+    const btnRenP2Clear = document.getElementById('btn-ren-p2-clear');
+
+    // Column G Elements
+    const renDropzoneG = document.getElementById('ren-dropzone-g');
+    const renFileInputG = document.getElementById('ren-file-input-g');
+    const btnRenGSelect = document.getElementById('btn-ren-g-select');
+    const btnRenGClear = document.getElementById('btn-ren-g-clear');
+
+    // Action Buttons
+    const btnRenameRun = document.getElementById('btn-rename-run');
+    const btnRenameRunTrigger = document.getElementById('btn-rename-run-trigger');
+    const btnDownloadAllZip = document.getElementById('btn-download-all-zip');
+    const btnDownloadOrderZip = document.getElementById('btn-download-order-zip');
+    const btnMoveToMerge = document.getElementById('btn-move-to-merge');
+    const btnOrderFullview = document.getElementById('btn-order-fullview');
+
+    const btnDownloadTaxZip = document.getElementById('btn-download-tax-zip');
+    const btnMoveToFolderCreate = document.getElementById('btn-move-to-folder-create');
+    const btnTaxFullview = document.getElementById('btn-tax-fullview');
+
+    // Edit Prefix Modal Elements
+    const editPrefixModal = document.getElementById('edit-prefix-modal');
+    const btnCloseEditPrefix = document.getElementById('btn-close-edit-prefix');
+    const btnCancelEditPrefix = document.getElementById('btn-cancel-edit-prefix');
+    const btnSaveEditPrefix = document.getElementById('btn-save-edit-prefix');
+    const editPrefixInput = document.getElementById('edit-prefix-input');
+
+    // Full View Modal Elements
+    const renFullviewModal = document.getElementById('ren-fullview-modal');
+    const btnCloseRenFullview = document.getElementById('btn-close-ren-fullview');
+    const renFullviewSearch = document.getElementById('ren-fullview-search');
+
+    // Setup P2 Upload & Dropzone
+    if (renDropzoneP2 && renFileInputP2) {
+        renDropzoneP2.addEventListener('click', (e) => {
+            if (e.target.closest('#btn-ren-p2-select') || e.target.closest('#btn-ren-p2-clear')) return;
+            renFileInputP2.click();
+        });
+
+        if (btnRenP2Select) {
+            btnRenP2Select.addEventListener('click', (e) => {
+                e.stopPropagation();
+                renFileInputP2.click();
+            });
+        }
+
+        renFileInputP2.addEventListener('change', (e) => {
+            handleRenFileSelection(e.target.files, 'p2');
+            renFileInputP2.value = "";
+        });
+
+        renDropzoneP2.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            renDropzoneP2.classList.add('dragover');
+        });
+
+        renDropzoneP2.addEventListener('dragleave', () => {
+            renDropzoneP2.classList.remove('dragover');
+        });
+
+        renDropzoneP2.addEventListener('drop', (e) => {
+            e.preventDefault();
+            renDropzoneP2.classList.remove('dragover');
+            if (e.dataTransfer.files.length > 0) {
+                handleRenFileSelection(e.dataTransfer.files, 'p2');
+            }
+        });
+    }
+
+    // Setup Column G Upload & Dropzone
+    if (renDropzoneG && renFileInputG) {
+        renDropzoneG.addEventListener('click', (e) => {
+            if (e.target.closest('#btn-ren-g-select') || e.target.closest('#btn-ren-g-clear')) return;
+            renFileInputG.click();
+        });
+
+        if (btnRenGSelect) {
+            btnRenGSelect.addEventListener('click', (e) => {
+                e.stopPropagation();
+                renFileInputG.click();
+            });
+        }
+
+        renFileInputG.addEventListener('change', (e) => {
+            handleRenFileSelection(e.target.files, 'g');
+            renFileInputG.value = "";
+        });
+
+        renDropzoneG.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            renDropzoneG.classList.add('dragover');
+        });
+
+        renDropzoneG.addEventListener('dragleave', () => {
+            renDropzoneG.classList.remove('dragover');
+        });
+
+        renDropzoneG.addEventListener('drop', (e) => {
+            e.preventDefault();
+            renDropzoneG.classList.remove('dragover');
+            if (e.dataTransfer.files.length > 0) {
+                handleRenFileSelection(e.dataTransfer.files, 'g');
+            }
+        });
+    }
+
+    // Clear individual sections
+    if (btnRenP2Clear) {
+        btnRenP2Clear.addEventListener('click', (e) => {
+            e.stopPropagation();
+            clearRenMethodFiles('p2');
+        });
+    }
+
+    if (btnRenGClear) {
+        btnRenGClear.addEventListener('click', (e) => {
+            e.stopPropagation();
+            clearRenMethodFiles('g');
+        });
+    }
+
+    // Rename Trigger (Execute Rename Algorithm on button click)
+    if (btnRenameRun) btnRenameRun.addEventListener('click', processRenameAction);
+    if (btnRenameRunTrigger) btnRenameRunTrigger.addEventListener('click', processRenameAction);
+
+    // Download ZIP Actions (NO auto download - user clicks button when ready)
+    if (btnDownloadAllZip) btnDownloadAllZip.addEventListener('click', () => downloadRenZip('all'));
+    if (btnDownloadOrderZip) btnDownloadOrderZip.addEventListener('click', () => downloadRenZip('p2'));
+    if (btnDownloadTaxZip) btnDownloadTaxZip.addEventListener('click', () => downloadRenZip('g'));
+
+    // Move to Tab Actions
+    if (btnMoveToMerge) btnMoveToMerge.addEventListener('click', moveToMergeTab);
+    if (btnMoveToFolderCreate) btnMoveToFolderCreate.addEventListener('click', moveToFolderCreateTab);
+
+    // Full View Modal Triggers
+    if (btnOrderFullview) {
+        btnOrderFullview.addEventListener('click', () => openRenFullViewModal('p2'));
+    }
+    if (btnTaxFullview) {
+        btnTaxFullview.addEventListener('click', () => openRenFullViewModal('g'));
+    }
+
+    // Edit Prefix Modal Handlers
+    if (btnCloseEditPrefix) btnCloseEditPrefix.addEventListener('click', closeEditPrefixModal);
+    if (btnCancelEditPrefix) btnCancelEditPrefix.addEventListener('click', closeEditPrefixModal);
+    if (btnSaveEditPrefix) btnSaveEditPrefix.addEventListener('click', saveEditPrefix);
+    if (editPrefixInput) {
+        editPrefixInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') saveEditPrefix();
+            if (e.key === 'Escape') closeEditPrefixModal();
+        });
+    }
+    if (editPrefixModal) {
+        editPrefixModal.addEventListener('click', (e) => {
+            if (e.target === editPrefixModal) closeEditPrefixModal();
+        });
+    }
+
+    // Full View Modal Handlers
+    if (btnCloseRenFullview) {
+        btnCloseRenFullview.addEventListener('click', () => {
+            if (renFullviewModal) renFullviewModal.classList.remove('show');
+        });
+    }
+    if (renFullviewModal) {
+        renFullviewModal.addEventListener('click', (e) => {
+            if (e.target === renFullviewModal) renFullviewModal.classList.remove('show');
+        });
+    }
+    if (renFullviewSearch) {
+        renFullviewSearch.addEventListener('input', () => {
+            renderFullViewModalRows();
+        });
+    }
+
+    // Load saved 1-hour session from IndexedDB if available
+    loadRenameSessionFromStorage();
+}
+
+// Clear files belonging to a specific method (p2 or g)
+function clearRenMethodFiles(methodType) {
+    renUploadedFiles = renUploadedFiles.filter(f => f.methodType !== methodType);
+    if (renUploadedFiles.length === 0) {
+        renIsProcessed = false;
+    }
+    resetRenameButtonState();
+    updateRenUploadBadges();
+    if (renIsProcessed) {
+        calculateRenameResults();
+    }
+    renderRenameState();
+    saveRenameSessionToStorage();
+    showToast(`Cleared ${methodType === 'p2' ? 'Order' : 'Tax'} files.`, "info");
+}
+
+// Update file count badges on upload boxes
+function updateRenUploadBadges() {
+    const p2Files = renUploadedFiles.filter(f => f.methodType === 'p2');
+    const gFiles = renUploadedFiles.filter(f => f.methodType === 'g');
+
+    const renP2Badge = document.getElementById('ren-p2-count-badge');
+    const renGBadge = document.getElementById('ren-g-count-badge');
+    const renFileLabelP2 = document.getElementById('ren-file-label-p2');
+    const renFileLabelG = document.getElementById('ren-file-label-g');
+    const btnRenP2Clear = document.getElementById('btn-ren-p2-clear');
+    const btnRenGClear = document.getElementById('btn-ren-g-clear');
+
+    if (renP2Badge) renP2Badge.textContent = `${p2Files.length} file${p2Files.length === 1 ? '' : 's'}`;
+    if (renGBadge) renGBadge.textContent = `${gFiles.length} file${gFiles.length === 1 ? '' : 's'}`;
+
+    if (renFileLabelP2) {
+        renFileLabelP2.textContent = p2Files.length > 0 ? `${p2Files.length} P2 file${p2Files.length === 1 ? '' : 's'} loaded` : "Drop P2 Files / ZIP here";
+    }
+    if (renFileLabelG) {
+        renFileLabelG.textContent = gFiles.length > 0 ? `${gFiles.length} Column G file${gFiles.length === 1 ? '' : 's'} loaded` : "Drop Column G Files / ZIP here";
+    }
+
+    if (btnRenP2Clear) btnRenP2Clear.style.display = p2Files.length > 0 ? "inline-block" : "none";
+    if (btnRenGClear) btnRenGClear.style.display = gFiles.length > 0 ? "inline-block" : "none";
+}
+
+// Reset rename button state
 function resetRenameButtonState() {
     renGeneratedZipBlob = null;
     renGeneratedZipName = "";
@@ -2925,44 +3870,33 @@ function resetRenameButtonState() {
     if (btnRenameRun) {
         btnRenameRun.innerHTML = `
             <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 5px;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-            Rename Files
+            ${renIsProcessed ? 'Re-run Rename' : 'Rename All Files'}
         `;
-        btnRenameRun.style.background = ""; // Restore default style
+        btnRenameRun.style.background = "";
         btnRenameRun.style.borderColor = "";
-    }
-    const renFileLabel = document.getElementById('ren-file-label');
-    if (renFileLabel) {
-        renFileLabel.textContent = "Drag & Drop files here";
+        btnRenameRun.disabled = false;
     }
 }
 
 // Handle selected rename files
-async function handleRenFileSelection(files) {
-    resetRenameButtonState();
+async function handleRenFileSelection(files, methodType = 'p2') {
     if (!files || files.length === 0) return;
 
-    const renDropzone = document.getElementById('ren-dropzone');
     const renProgress = document.getElementById('ren-progress');
     const renProgressPercent = document.getElementById('ren-progress-percent');
     const renProgressText = document.getElementById('ren-progress-text');
     const renProgressFill = document.getElementById('ren-progress-fill');
 
-    // Show inline progress box
-    renProgress.classList.remove('hidden');
+    if (renProgress) renProgress.classList.remove('hidden');
     const updateRenProgress = (percent, text) => {
-        renProgressPercent.textContent = `${Math.round(percent)}%`;
-        renProgressFill.style.width = `${percent}%`;
-        if (text) renProgressText.textContent = text;
+        if (renProgressPercent) renProgressPercent.textContent = `${Math.round(percent)}%`;
+        if (renProgressFill) renProgressFill.style.width = `${percent}%`;
+        if (renProgressText && text) renProgressText.textContent = text;
     };
 
-    updateRenProgress(5, "Reading uploaded files...");
-    
-    // Clear previous files list
-    renUploadedFiles = [];
-    renNextId = 1;
+    updateRenProgress(5, `Loading ${methodType === 'p2' ? 'Order (P2)' : 'Tax (Column G)'} files...`);
 
     try {
-        // Build flat list of files (resolving any ZIP files)
         const flatFilesList = [];
         for (let i = 0; i < files.length; i++) {
             const file = files[i];
@@ -2982,104 +3916,201 @@ async function handleRenFileSelection(files) {
         }
 
         if (flatFilesList.length === 0) {
-            renProgress.classList.add('hidden');
+            if (renProgress) renProgress.classList.add('hidden');
             showToast("No valid Excel or CSV files found.", "error");
             return;
-        }
-
-        // Update the file label text on screen
-        const renFileLabel = document.getElementById('ren-file-label');
-        if (renFileLabel) {
-            renFileLabel.textContent = `${flatFilesList.length} files loaded`;
         }
 
         for (let i = 0; i < flatFilesList.length; i++) {
             const fileData = flatFilesList[i];
             const fileProgress = 10 + Math.round((i / flatFilesList.length) * 80);
-            updateRenProgress(fileProgress, `Parsing: ${fileData.name}...`);
-            await new Promise(r => setTimeout(r, 10));
+            updateRenProgress(fileProgress, `Reading: ${fileData.name}...`);
+            await new Promise(r => setTimeout(r, 8));
 
             const fileObj = {
                 id: renNextId++,
                 name: fileData.name,
                 fileObj: fileData.blob,
                 ext: fileData.ext,
+                methodType: methodType, // 'p2' or 'g'
                 p2Value: "",
                 colGValue: "",
                 renameCode: "",
-                renamedName: ""
+                renamedName: "",
+                parsedAOA: null
             };
 
-            // Parse AOA spreadsheet structure to extract G/P2 values in background
             const aoa = await readExcelAsAOA(fileData.blob);
+            fileObj.parsedAOA = aoa ? aoa.slice(0, 50) : null;
             
-            // Extract P2 value: row index 1, column index 15 (Column P)
-            let p2Val = "";
-            if (aoa.length > 1 && aoa[1] && aoa[1][15] !== undefined) {
-                p2Val = String(aoa[1][15]).trim();
-            }
-
-            // Extract Column G value: column index 6 (or scan data rows/columns if empty)
-            let colGVal = "";
-            for (let r = 1; r < aoa.length; r++) {
-                const row = aoa[r];
-                if (row && row[6] !== undefined && row[6] !== null) {
-                    const val = String(row[6]).trim();
-                    const lowerVal = val.toLowerCase();
-                    // Skip header labels but keep CGJ1- and invoice values
-                    if (val !== "" && lowerVal !== "quantity" && lowerVal !== "description" && lowerVal !== "invoice number" && lowerVal !== "seller sku") {
-                        colGVal = val;
-                        break;
+            if (methodType === 'p2') {
+                // Extract P2 value: row index 1, column index 15 (Column P)
+                let p2Val = "";
+                if (aoa.length > 1 && aoa[1] && aoa[1][15] !== undefined) {
+                    p2Val = String(aoa[1][15]).trim();
+                }
+                fileObj.p2Value = p2Val;
+            } else {
+                // Extract Column G value: column index 6
+                let colGVal = "";
+                for (let r = 1; r < aoa.length; r++) {
+                    const row = aoa[r];
+                    if (row && row[6] !== undefined && row[6] !== null) {
+                        const val = String(row[6]).trim();
+                        const lowerVal = val.toLowerCase();
+                        if (val !== "" && lowerVal !== "quantity" && lowerVal !== "description" && lowerVal !== "invoice number" && lowerVal !== "seller sku") {
+                            colGVal = val;
+                            break;
+                        }
                     }
                 }
-            }
 
-            // Fallback: If Column G (index 6) was empty, scan rows 1..25 across columns 0..15
-            if (!colGVal) {
-                for (let r = 1; r < Math.min(aoa.length, 25); r++) {
-                    const row = aoa[r];
-                    if (!row) continue;
-                    for (let c = 0; c < Math.min(row.length, 15); c++) {
-                        if (row[c] !== undefined && row[c] !== null) {
-                            const val = String(row[c]).trim();
-                            const upperVal = val.toUpperCase();
-                            if (val !== "" && (upperVal.startsWith("CGJ1-") || val.includes('-') || /\d{2,4}/.test(val))) {
-                                const lowerVal = val.toLowerCase();
-                                if (!lowerVal.includes("invoice") && !lowerVal.includes("order") && !lowerVal.includes("description") && !lowerVal.includes("quantity")) {
-                                    colGVal = val;
-                                    break;
+                // Fallback: If Column G (index 6) was empty, scan rows 1..25 across columns 0..15
+                if (!colGVal) {
+                    for (let r = 1; r < Math.min(aoa.length, 25); r++) {
+                        const row = aoa[r];
+                        if (!row) continue;
+                        for (let c = 0; c < Math.min(row.length, 15); c++) {
+                            if (row[c] !== undefined && row[c] !== null) {
+                                const val = String(row[c]).trim();
+                                const upperVal = val.toUpperCase();
+                                if (val !== "" && (upperVal.startsWith("CGJ1-") || val.includes('-') || /\d{2,4}/.test(val))) {
+                                    const lowerVal = val.toLowerCase();
+                                    if (!lowerVal.includes("invoice") && !lowerVal.includes("order") && !lowerVal.includes("description") && !lowerVal.includes("quantity")) {
+                                        colGVal = val;
+                                        break;
+                                    }
                                 }
                             }
                         }
+                        if (colGVal) break;
                     }
-                    if (colGVal) break;
                 }
+                fileObj.colGValue = colGVal;
             }
 
-            fileObj.p2Value = p2Val;
-            fileObj.colGValue = colGVal;
             renUploadedFiles.push(fileObj);
         }
 
-        updateRenProgress(95, "Resolving codes...");
-        await new Promise(r => setTimeout(r, 20));
+        // New files added -> Needs processing by user clicking "Rename All Files"
+        renIsProcessed = false;
+        resetRenameButtonState();
+        updateRenUploadBadges();
+        renderRenameState();
+        saveRenameSessionToStorage();
 
-        calculateRenameResults();
-
-        updateRenProgress(100, "Done!");
-        showToast(`${renUploadedFiles.length} files loaded for renaming!`, "success");
+        updateRenProgress(100, "Loaded!");
+        showToast(`${flatFilesList.length} ${methodType === 'p2' ? 'Order' : 'Tax'} file(s) loaded! Click 'Rename All Files' to process.`, "info");
         
         setTimeout(() => {
-            renProgress.classList.add('hidden');
-            renProgressPercent.textContent = "0%";
-            renProgressFill.style.width = "0%";
-            renProgressText.textContent = "Processing rename...";
-        }, 1200);
+            if (renProgress) {
+                renProgress.classList.add('hidden');
+                if (renProgressPercent) renProgressPercent.textContent = "0%";
+                if (renProgressFill) renProgressFill.style.width = "0%";
+                if (renProgressText) renProgressText.textContent = "Processing rename...";
+            }
+        }, 1000);
 
     } catch (err) {
         console.error(err);
         showToast("Error reading files: " + err.message, "error");
-        renProgress.classList.add('hidden');
+        if (renProgress) renProgress.classList.add('hidden');
+    }
+}
+
+// Process Rename Action: Triggered only when clicking "Rename All Files" button!
+async function processRenameAction() {
+    if (renUploadedFiles.length === 0) {
+        showToast("Please upload files to P2 or Column G first.", "error");
+        return;
+    }
+
+    const btnRenameRun = document.getElementById('btn-rename-run');
+    const renProgress = document.getElementById('ren-progress');
+    const renProgressPercent = document.getElementById('ren-progress-percent');
+    const renProgressText = document.getElementById('ren-progress-text');
+    const renProgressFill = document.getElementById('ren-progress-fill');
+
+    if (btnRenameRun) btnRenameRun.disabled = true;
+    if (renProgress) renProgress.classList.remove('hidden');
+
+    const updateRenProgress = (percent, text) => {
+        if (renProgressPercent) renProgressPercent.textContent = `${Math.round(percent)}%`;
+        if (renProgressFill) renProgressFill.style.width = `${percent}%`;
+        if (renProgressText && text) renProgressText.textContent = text;
+    };
+
+    updateRenProgress(20, "Resolving party prefixes & calculating renamed names...");
+    await new Promise(r => setTimeout(r, 100));
+
+    calculateRenameResults();
+    renIsProcessed = true;
+    
+    updateRenProgress(80, "Organizing Order and Tax categories...");
+    await new Promise(r => setTimeout(r, 100));
+
+    renderRenameState();
+    saveRenameSessionToStorage();
+
+    updateRenProgress(100, "Rename Complete!");
+    showToast(`Successfully renamed ${renUploadedFiles.length} files! You can now review or download below.`, "success");
+
+    setTimeout(() => {
+        if (renProgress) {
+            renProgress.classList.add('hidden');
+            if (renProgressPercent) renProgressPercent.textContent = "0%";
+            if (renProgressFill) renProgressFill.style.width = "0%";
+            if (renProgressText) renProgressText.textContent = "Processing rename...";
+        }
+        resetRenameButtonState();
+    }, 1200);
+}
+
+// Render Master Rename State (Empty, Staged, or Processed Results)
+function renderRenameState() {
+    const emptyState = document.getElementById('ren-empty-state');
+    const stagedState = document.getElementById('ren-staged-state');
+    const resultsContainer = document.getElementById('ren-results-container');
+    const btnRenameRun = document.getElementById('btn-rename-run');
+
+    const stagedTitle = document.getElementById('ren-staged-title');
+    const stagedDesc = document.getElementById('ren-staged-desc');
+
+    const p2Files = renUploadedFiles.filter(f => f.methodType === 'p2');
+    const gFiles = renUploadedFiles.filter(f => f.methodType === 'g');
+    const totalFiles = renUploadedFiles.length;
+
+    if (totalFiles === 0) {
+        if (emptyState) emptyState.classList.remove('hidden');
+        if (stagedState) stagedState.classList.add('hidden');
+        if (resultsContainer) resultsContainer.classList.add('hidden');
+        if (btnRenameRun) btnRenameRun.classList.add('hidden');
+        return;
+    }
+
+    if (emptyState) emptyState.classList.add('hidden');
+
+    if (!renIsProcessed) {
+        // Files loaded, waiting for user to click "Rename All Files"
+        if (stagedState) {
+            stagedState.classList.remove('hidden');
+            if (stagedTitle) stagedTitle.textContent = `${totalFiles} Files Loaded & Ready to Rename`;
+            if (stagedDesc) stagedDesc.innerHTML = `Loaded: <strong>${p2Files.length} Order Files (P2)</strong> and <strong>${gFiles.length} Tax Files (Column G)</strong>.<br>Click <strong>"Rename All Files"</strong> to calculate prefix codes.`;
+        }
+        if (resultsContainer) resultsContainer.classList.add('hidden');
+        if (btnRenameRun) {
+            btnRenameRun.classList.remove('hidden');
+            btnRenameRun.disabled = false;
+        }
+    } else {
+        // Files processed -> Show Categorized Output Cards!
+        if (stagedState) stagedState.classList.add('hidden');
+        if (resultsContainer) resultsContainer.classList.remove('hidden');
+        if (btnRenameRun) {
+            btnRenameRun.classList.remove('hidden');
+            btnRenameRun.disabled = false;
+        }
+        renderCategorizedRenamePreview();
     }
 }
 
@@ -3172,103 +4203,109 @@ function extractCodeFromColG(colGVal, fileName) {
     return "";
 }
 
-// Calculate Rename codes & names based on selected Method
+// Calculate Rename codes & names based on each file's Method
 function calculateRenameResults() {
-    if (renUploadedFiles.length === 0) return;
-
-    const methodInput = document.querySelector('input[name="ren-method"]:checked');
-    const useP2Method = methodInput ? (methodInput.value === "yes") : true;
+    if (renUploadedFiles.length === 0) {
+        renderCategorizedRenamePreview();
+        return;
+    }
 
     const usedNames = new Set();
 
     renUploadedFiles.forEach(fileObj => {
-        let renameCode = "";
+        let renameCode = fileObj.renameCode; // Preserve manually edited code if already set
 
-        if (useP2Method) {
-            // OPTION A: P2 Value direct database match (supports main name & bracket alias names) or fallback
-            if (fileObj.p2Value !== "") {
-                const rawP2 = String(fileObj.p2Value).trim();
-                const normP2 = rawP2.toUpperCase().replace(/[^A-Z0-9]/g, "");
-                let partyCodeMatch = "";
+        if (!renameCode || renameCode === "Not Found") {
+            if (fileObj.methodType === 'p2') {
+                // OPTION A: P2 Value direct database match (supports main name & bracket alias names) or fallback
+                if (fileObj.p2Value !== "") {
+                    const rawP2 = String(fileObj.p2Value).trim();
+                    const normP2 = rawP2.toUpperCase().replace(/[^A-Z0-9]/g, "");
+                    let partyCodeMatch = "";
 
-                if (normP2 !== "") {
-                    // Loop through Google sheet synced party data
-                    for (let i = 0; i < partyData.length; i++) {
-                        const item = partyData[i];
-                        if (!item) continue;
+                    if (normP2 !== "") {
+                        // Loop through Google sheet synced party data
+                        for (let i = 0; i < partyData.length; i++) {
+                            const item = partyData[i];
+                            if (!item) continue;
 
-                        const itemCode = String(item.code || "").trim();
-                        const normCode = itemCode.toUpperCase().replace(/[^A-Z0-9]/g, "");
-                        const fullPartyCode = String(item.partyCode || "").trim();
+                            const itemCode = String(item.code || "").trim();
+                            const normCode = itemCode.toUpperCase().replace(/[^A-Z0-9]/g, "");
+                            const fullPartyCode = String(item.partyCode || "").trim();
 
-                        // 1. Direct match with numeric/code (e.g., P2 contains "178")
-                        if (normCode !== "" && normP2 === normCode) {
-                            partyCodeMatch = itemCode;
-                            break;
-                        }
-
-                        // 2. Extract bracket alias names, e.g. "CB-COLEBROOK" from "178-COLEBROOK(CB-COLEBROOK)"
-                        const bracketMatches = [];
-                        const bracketRegex = /\(([^)]+)\)/g;
-                        let match;
-                        while ((match = bracketRegex.exec(fullPartyCode)) !== null) {
-                            if (match[1]) {
-                                bracketMatches.push(match[1].trim());
-                            }
-                        }
-
-                        // Check bracket alias names match
-                        let matchedInBracket = false;
-                        for (let b = 0; b < bracketMatches.length; b++) {
-                            const normBracket = bracketMatches[b].toUpperCase().replace(/[^A-Z0-9]/g, "");
-                            if (normBracket !== "" && (normBracket === normP2 || (normP2.length >= 3 && normBracket.indexOf(normP2) !== -1) || (normBracket.length >= 3 && normP2.indexOf(normBracket) !== -1))) {
+                            // 1. Direct match with numeric/code (e.g., P2 contains "178")
+                            if (normCode !== "" && normP2 === normCode) {
                                 partyCodeMatch = itemCode;
-                                matchedInBracket = true;
+                                break;
+                            }
+
+                            // 2. Extract bracket alias names, e.g. "CB-COLEBROOK" from "178-COLEBROOK(CB-COLEBROOK)"
+                            const bracketMatches = [];
+                            const bracketRegex = /\(([^)]+)\)/g;
+                            let match;
+                            while ((match = bracketRegex.exec(fullPartyCode)) !== null) {
+                                if (match[1]) {
+                                    bracketMatches.push(match[1].trim());
+                                }
+                            }
+
+                            // Check bracket alias names match
+                            let matchedInBracket = false;
+                            for (let b = 0; b < bracketMatches.length; b++) {
+                                const normBracket = bracketMatches[b].toUpperCase().replace(/[^A-Z0-9]/g, "");
+                                if (normBracket !== "" && (normBracket === normP2 || (normP2.length >= 3 && normBracket.indexOf(normP2) !== -1) || (normBracket.length >= 3 && normP2.indexOf(normBracket) !== -1))) {
+                                    partyCodeMatch = itemCode;
+                                    matchedInBracket = true;
+                                    break;
+                                }
+                            }
+                            if (matchedInBracket) break;
+
+                            // 3. Check main name outside brackets (e.g. "COLEBROOK" from "178-COLEBROOK(CB-COLEBROOK)")
+                            const outsideBracketStr = fullPartyCode.replace(/\([^)]*\)/g, "").trim();
+                            const normOutside = outsideBracketStr.toUpperCase().replace(/[^A-Z0-9]/g, "");
+
+                            if (normOutside !== "" && (normOutside === normP2 || (normP2.length >= 3 && normOutside.indexOf(normP2) !== -1) || (normOutside.length >= 3 && normP2.indexOf(normOutside) !== -1))) {
+                                partyCodeMatch = itemCode;
+                                break;
+                            }
+
+                            // 4. Fallback full string match (without brackets)
+                            const normFull = fullPartyCode.toUpperCase().replace(/[^A-Z0-9]/g, "");
+                            if (normFull !== "" && (normFull.indexOf(normP2) !== -1 || normP2.indexOf(normFull) !== -1)) {
+                                partyCodeMatch = itemCode;
                                 break;
                             }
                         }
-                        if (matchedInBracket) break;
-
-                        // 3. Check main name outside brackets (e.g. "COLEBROOK" from "178-COLEBROOK(CB-COLEBROOK)")
-                        const outsideBracketStr = fullPartyCode.replace(/\([^)]*\)/g, "").trim();
-                        const normOutside = outsideBracketStr.toUpperCase().replace(/[^A-Z0-9]/g, "");
-
-                        if (normOutside !== "" && (normOutside === normP2 || (normP2.length >= 3 && normOutside.indexOf(normP2) !== -1) || (normOutside.length >= 3 && normP2.indexOf(normOutside) !== -1))) {
-                            partyCodeMatch = itemCode;
-                            break;
-                        }
-
-                        // 4. Fallback full string match (without brackets)
-                        const normFull = fullPartyCode.toUpperCase().replace(/[^A-Z0-9]/g, "");
-                        if (normFull !== "" && (normFull.indexOf(normP2) !== -1 || normP2.indexOf(normFull) !== -1)) {
-                            partyCodeMatch = itemCode;
-                            break;
-                        }
                     }
-                }
 
-                if (partyCodeMatch !== "") {
-                    renameCode = partyCodeMatch;
+                    if (partyCodeMatch !== "") {
+                        renameCode = partyCodeMatch;
+                    } else {
+                        renameCode = fileObj.p2Value || "Not Found";
+                    }
                 } else {
-                    renameCode = fileObj.p2Value; // Fallback to raw P2 if no match found
+                    renameCode = "Not Found";
                 }
-            }
-        } else {
-            // OPTION B: Column G cell extraction (with smart CGJ1- & Party Database matching)
-            const extractedCode = extractCodeFromColG(fileObj.colGValue, fileObj.name);
-            if (extractedCode !== "") {
-                renameCode = extractedCode;
+            } else {
+                // OPTION B: Column G cell extraction (with smart CGJ1- & Party Database matching)
+                const extractedCode = extractCodeFromColG(fileObj.colGValue, fileObj.name);
+                if (extractedCode !== "") {
+                    renameCode = extractedCode;
+                } else {
+                    renameCode = "Not Found";
+                }
             }
         }
 
-        if (renameCode !== "") {
+        if (renameCode && renameCode !== "Not Found") {
             const ext = `.${fileObj.ext}`;
             const baseName = fileObj.name.substring(0, fileObj.name.lastIndexOf('.')) || fileObj.name;
             
             // Format: renameCode-oldName.ext
             let targetName = `${renameCode}-${baseName}${ext}`;
 
-            // Duplicate collision handling (e.g. adding suffix indices (1), (2), etc.)
+            // Duplicate collision handling
             let counter = 1;
             let checkName = targetName;
             while (usedNames.has(checkName.toLowerCase())) {
@@ -3286,71 +4323,450 @@ function calculateRenameResults() {
         }
     });
 
-    renderRenamePreview();
+    renderCategorizedRenamePreview();
 }
 
-// Render preview list
-function renderRenamePreview() {
-    const renFileCount = document.getElementById('ren-file-count');
-    const renPreviewTbody = document.getElementById('ren-preview-tbody');
-    const renEmptyState = document.getElementById('ren-empty-state');
-    const renTableContainer = document.getElementById('ren-table-container');
-    const btnRenameRun = document.getElementById('btn-rename-run');
-
-    renFileCount.textContent = `${renUploadedFiles.length} files loaded`;
-    renPreviewTbody.innerHTML = '';
-
-    if (renUploadedFiles.length === 0) {
-        renEmptyState.classList.remove('hidden');
-        renTableContainer.classList.add('hidden');
-        btnRenameRun.classList.add('hidden');
-        return;
-    }
-
-    renEmptyState.classList.add('hidden');
-    renTableContainer.classList.remove('hidden');
-    btnRenameRun.classList.remove('hidden');
-
-    renUploadedFiles.forEach((file, idx) => {
-        const tr = document.createElement('tr');
-        tr.className = `row-color-${idx % 7}`;
-        
-        let codeBadgeClass = "badge-unmatched";
-        if (file.renameCode !== "Not Found") {
-            codeBadgeClass = "badge-od";
+// Remove an individual file from rename queue
+function removeRenFile(fileId) {
+    const file = renUploadedFiles.find(f => f.id === fileId);
+    const fileName = file ? file.name : "File";
+    showDeleteConfirmation({
+        title: "Delete File?",
+        message: `Are you sure you want to delete "${fileName}"?`,
+        onConfirm: () => {
+            renUploadedFiles = renUploadedFiles.filter(f => f.id !== fileId);
+            resetRenameButtonState();
+            updateRenUploadBadges();
+            calculateRenameResults();
+            renderRenameState();
+            if (document.getElementById('ren-fullview-modal') && document.getElementById('ren-fullview-modal').classList.contains('show')) {
+                renderFullViewModalRows();
+            }
+            saveRenameSessionToStorage();
+            showToast(`File "${fileName}" removed.`, "info");
         }
-
-        tr.innerHTML = `
-            <td><strong>${idx + 1}</strong></td>
-            <td><span class="file-name" title="${file.name}">${file.name}</span></td>
-            <td><span class="badge ${codeBadgeClass}">${file.renameCode}</span></td>
-            <td><span style="color: var(--primary); font-weight: 500; font-size: 0.8rem;">${file.renamedName}</span></td>
-        `;
-        renPreviewTbody.appendChild(tr);
     });
 }
 
-// Run the rename split package download
-async function runRenameProcess() {
-    if (renUploadedFiles.length === 0) return;
+// Open Sheet Data Inspector for first 50 rows
+async function openRenFileInspector(file) {
+    if (!file) return;
 
-    const btnRenameRun = document.getElementById('btn-rename-run');
+    const modal = document.getElementById('inspector-modal');
+    const modalTitleElem = document.getElementById('modal-title');
+    const inspectorTheadElem = document.getElementById('inspector-thead');
+    const inspectorTbodyElem = document.getElementById('inspector-tbody');
 
-    // If already generated, download directly
-    if (renGeneratedZipBlob) {
-        const url = URL.createObjectURL(renGeneratedZipBlob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = renGeneratedZipName;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
+    if (!modal) return;
+
+    if (modalTitleElem) modalTitleElem.textContent = `Inspect File: ${file.name}`;
+    if (inspectorTheadElem) inspectorTheadElem.innerHTML = '';
+    if (inspectorTbodyElem) {
+        inspectorTbodyElem.innerHTML = '<tr><td colspan="10" style="text-align: center; color: var(--text-muted); padding: 2rem;">Loading spreadsheet data...</td></tr>';
+    }
+
+    modal.classList.add('show');
+    modal.classList.remove('hidden');
+
+    let rows = file.parsedAOA;
+    if (!rows || rows.length === 0) {
+        try {
+            rows = await readExcelAsAOA(file.fileObj);
+            file.parsedAOA = rows ? rows.slice(0, 50) : null;
+        } catch (e) {
+            if (inspectorTbodyElem) {
+                inspectorTbodyElem.innerHTML = `<tr><td colspan="10" style="text-align: center; color: var(--color-danger); padding: 2rem;">Error reading file: ${e.message}</td></tr>`;
+            }
+            return;
+        }
+    }
+
+    if (!rows || rows.length === 0) {
+        if (inspectorTbodyElem) {
+            inspectorTbodyElem.innerHTML = '<tr><td colspan="10" style="text-align: center; color: var(--text-muted); padding: 2rem;">No preview rows available.</td></tr>';
+        }
+        return;
+    }
+
+    if (inspectorTheadElem) inspectorTheadElem.innerHTML = '';
+    if (inspectorTbodyElem) inspectorTbodyElem.innerHTML = '';
+
+    const maxRows = Math.min(rows.length, 50);
+    const headers = rows[0] || [];
+
+    // Header row
+    const trHead = document.createElement('tr');
+    headers.forEach((h, colIndex) => {
+        const th = document.createElement('th');
+        th.style.padding = '0.6rem 0.85rem';
+        th.style.color = 'var(--text-secondary)';
+        th.style.fontSize = '0.75rem';
+        th.style.borderBottom = '1px solid rgba(0, 0, 0, 0.08)';
         
-        setTimeout(() => {
-            URL.revokeObjectURL(url);
-        }, 1000);
+        const excelLetter = typeof getExcelColumnLetter === 'function' ? getExcelColumnLetter(colIndex) : String.fromCharCode(65 + colIndex);
+        th.innerHTML = `<span style="display:block; font-size: 0.65rem; color: var(--text-muted); font-weight: 700;">${excelLetter}</span>${h !== undefined && h !== null ? h : ''}`;
+        trHead.appendChild(th);
+    });
+    if (inspectorTheadElem) inspectorTheadElem.appendChild(trHead);
 
-        showToast("ZIP downloaded successfully!", "success");
+    // Body rows
+    for (let r = 1; r < maxRows; r++) {
+        const row = rows[r] || [];
+        const tr = document.createElement('tr');
+        tr.className = `row-color-${(r - 1) % 7}`;
+        
+        headers.forEach((_, colIndex) => {
+            const td = document.createElement('td');
+            td.style.padding = '0.45rem 0.85rem';
+            td.style.fontSize = '0.75rem';
+            const cellVal = row[colIndex];
+            td.textContent = (cellVal !== undefined && cellVal !== null) ? cellVal : '';
+            tr.appendChild(td);
+        });
+        if (inspectorTbodyElem) inspectorTbodyElem.appendChild(tr);
+    }
+}
+
+// Open Edit Prefix Modal for a file
+function openEditPrefixModal(file) {
+    renActiveEditFile = file;
+    const editPrefixModal = document.getElementById('edit-prefix-modal');
+    const editPrefixFilename = document.getElementById('edit-prefix-filename');
+    const editPrefixInput = document.getElementById('edit-prefix-input');
+
+    if (!editPrefixModal || !file) return;
+
+    if (editPrefixFilename) editPrefixFilename.textContent = file.name;
+    if (editPrefixInput) {
+        editPrefixInput.value = (file.renameCode && file.renameCode !== "Not Found") ? file.renameCode : "";
+        setTimeout(() => editPrefixInput.focus(), 100);
+    }
+
+    editPrefixModal.classList.add('show');
+    editPrefixModal.classList.remove('hidden');
+}
+
+function closeEditPrefixModal() {
+    const editPrefixModal = document.getElementById('edit-prefix-modal');
+    if (editPrefixModal) {
+        editPrefixModal.classList.remove('show');
+        editPrefixModal.classList.add('hidden');
+    }
+    renActiveEditFile = null;
+}
+
+function saveEditPrefix() {
+    if (!renActiveEditFile) return;
+
+    const editPrefixInput = document.getElementById('edit-prefix-input');
+    const newPrefix = editPrefixInput ? editPrefixInput.value.trim() : "";
+
+    if (newPrefix) {
+        renActiveEditFile.renameCode = newPrefix;
+        const ext = `.${renActiveEditFile.ext}`;
+        const baseName = renActiveEditFile.name.substring(0, renActiveEditFile.name.lastIndexOf('.')) || renActiveEditFile.name;
+        renActiveEditFile.renamedName = `${newPrefix}-${baseName}${ext}`;
+        showToast(`Prefix "${newPrefix}" applied! Status changed to Matched.`, "success");
+    } else {
+        renActiveEditFile.renameCode = "Not Found";
+        renActiveEditFile.renamedName = renActiveEditFile.name;
+        showToast("Prefix cleared.", "info");
+    }
+
+    closeEditPrefixModal();
+    calculateRenameResults();
+    renderRenameState();
+    renderFullViewModalRows();
+    saveRenameSessionToStorage();
+}
+
+// Open Full View Modal for a category
+function openRenFullViewModal(category = 'all') {
+    renFullviewCategory = category;
+    const renFullviewModal = document.getElementById('ren-fullview-modal');
+    const renFullviewTitle = document.getElementById('ren-fullview-title');
+    const renFullviewSearch = document.getElementById('ren-fullview-search');
+
+    if (!renFullviewModal) return;
+
+    if (renFullviewTitle) {
+        if (category === 'p2') renFullviewTitle.textContent = "📦 Order Files (P2) — Full View";
+        else if (category === 'g') renFullviewTitle.textContent = "📊 Tax Files (Column G) — Full View";
+        else renFullviewTitle.textContent = "Full View — All Renamed Files";
+    }
+
+    if (renFullviewSearch) renFullviewSearch.value = "";
+
+    renderFullViewModalRows();
+    renFullviewModal.classList.add('show');
+    renFullviewModal.classList.remove('hidden');
+}
+
+function renderFullViewModalRows() {
+    const tbody = document.getElementById('tbody-fullview-files');
+    const countTag = document.getElementById('ren-fullview-count');
+    const searchInput = document.getElementById('ren-fullview-search');
+    const query = searchInput ? searchInput.value.trim().toLowerCase() : "";
+
+    if (!tbody) return;
+    tbody.innerHTML = '';
+
+    let list = renUploadedFiles;
+    if (renFullviewCategory === 'p2') list = list.filter(f => f.methodType === 'p2');
+    else if (renFullviewCategory === 'g') list = list.filter(f => f.methodType === 'g');
+
+    if (query) {
+        list = list.filter(f => f.name.toLowerCase().includes(query) || (f.renameCode && f.renameCode.toLowerCase().includes(query)) || f.renamedName.toLowerCase().includes(query));
+    }
+
+    // Sort: Unmatched ("Not Found") files at the TOP!
+    const sorted = [...list].sort((a, b) => {
+        const aUnmatched = (!a.renameCode || a.renameCode === "Not Found");
+        const bUnmatched = (!b.renameCode || b.renameCode === "Not Found");
+        if (aUnmatched && !bUnmatched) return -1;
+        if (!aUnmatched && bUnmatched) return 1;
+        return a.id - b.id;
+    });
+
+    if (countTag) countTag.textContent = `${sorted.length} files`;
+
+    if (sorted.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 2rem;">No matching files found.</td></tr>`;
+        return;
+    }
+
+    sorted.forEach((file, idx) => {
+        const isUnmatched = (!file.renameCode || file.renameCode === "Not Found");
+        const tr = document.createElement('tr');
+        tr.className = isUnmatched ? 'row-unmatched-warning' : `row-color-${idx % 7}`;
+        if (isUnmatched) {
+            tr.style.background = "rgba(220, 38, 38, 0.08)";
+            tr.style.borderLeft = "3.5px solid #dc2626";
+        }
+
+        const codeBadge = isUnmatched
+            ? `<span class="badge" style="background: rgba(220, 38, 38, 0.15); color: #dc2626; border: 1px solid rgba(220, 38, 38, 0.3); font-weight: 700;">⚠️ Not Found</span>`
+            : `<span class="badge" style="background: rgba(5, 150, 105, 0.15); color: #059669; border: 1px solid rgba(5, 150, 105, 0.3); font-weight: 700;">${file.renameCode}</span>`;
+
+        tr.innerHTML = `
+            <td><strong>${idx + 1}</strong></td>
+            <td>
+                <span class="file-name btn-inspect-file" style="cursor: pointer; font-weight: 600; color: var(--text-primary);" title="Click to view Excel rows">${file.name}</span>
+            </td>
+            <td>${codeBadge}</td>
+            <td><span style="color: var(--primary); font-weight: 600; font-size: 0.8rem;">${file.renamedName}</span></td>
+            <td style="text-align: center;">
+                <div style="display: inline-flex; gap: 4px;">
+                    <button class="btn-action btn-inspect-file" title="Inspect first 50 rows" style="width: 26px; height: 26px; border-radius: 6px; border: none; background: rgba(124, 58, 237, 0.08); color: var(--primary); cursor: pointer;">
+                        <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                    </button>
+                    <button class="btn-action btn-edit-prefix" title="Manually edit prefix code" style="width: 26px; height: 26px; border-radius: 6px; border: none; background: rgba(5, 150, 105, 0.08); color: #059669; cursor: pointer;">
+                        <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                    </button>
+                    <button class="btn-action btn-del-file" title="Delete file" style="width: 26px; height: 26px; border-radius: 6px; border: none; background: rgba(220, 38, 38, 0.08); color: var(--color-danger); cursor: pointer;">
+                        <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                    </button>
+                </div>
+            </td>
+        `;
+
+        tr.querySelectorAll('.btn-inspect-file').forEach(el => el.addEventListener('click', () => openRenFileInspector(file)));
+        const btnEdit = tr.querySelector('.btn-edit-prefix');
+        if (btnEdit) btnEdit.addEventListener('click', () => openEditPrefixModal(file));
+        const btnDel = tr.querySelector('.btn-del-file');
+        if (btnDel) btnDel.addEventListener('click', () => {
+            removeRenFile(file.id);
+            renderFullViewModalRows();
+        });
+
+        tbody.appendChild(tr);
+    });
+}
+
+// Render Categorized Preview Cards (Order Files & Tax Files)
+function renderCategorizedRenamePreview() {
+    const emptyState = document.getElementById('ren-empty-state');
+    const resultsContainer = document.getElementById('ren-results-container');
+    const btnRenameRun = document.getElementById('btn-rename-run');
+    const totalSummaryTag = document.getElementById('ren-total-summary-tag');
+    const unmatchedSummaryTag = document.getElementById('ren-unmatched-summary-tag');
+
+    const p2Files = renUploadedFiles.filter(f => f.methodType === 'p2');
+    const gFiles = renUploadedFiles.filter(f => f.methodType === 'g');
+    const totalFiles = renUploadedFiles.length;
+
+    const unmatchedTotal = renUploadedFiles.filter(f => !f.renameCode || f.renameCode === "Not Found").length;
+    const unmatchedP2 = p2Files.filter(f => !f.renameCode || f.renameCode === "Not Found").length;
+    const unmatchedG = gFiles.filter(f => !f.renameCode || f.renameCode === "Not Found").length;
+
+    if (totalFiles === 0) {
+        if (emptyState) emptyState.classList.remove('hidden');
+        if (resultsContainer) resultsContainer.classList.add('hidden');
+        if (btnRenameRun) btnRenameRun.classList.add('hidden');
+        return;
+    }
+
+    if (emptyState) emptyState.classList.add('hidden');
+    if (resultsContainer) resultsContainer.classList.remove('hidden');
+    if (btnRenameRun) btnRenameRun.classList.remove('hidden');
+
+    // Summary bar tags
+    if (totalSummaryTag) totalSummaryTag.textContent = `${totalFiles} total files (📦 Order: ${p2Files.length}, 📊 Tax: ${gFiles.length})`;
+    if (unmatchedSummaryTag) {
+        if (unmatchedTotal > 0) {
+            unmatchedSummaryTag.textContent = `⚠️ ${unmatchedTotal} Need Prefix`;
+            unmatchedSummaryTag.classList.remove('hidden');
+        } else {
+            unmatchedSummaryTag.classList.add('hidden');
+        }
+    }
+
+    // Render Order Files Table
+    renderFileTableSection('tbody-order-files', 'order-files-count-badge', 'order-unmatched-badge', p2Files, unmatchedP2, 'p2');
+
+    // Render Tax Files Table
+    renderFileTableSection('tbody-tax-files', 'tax-files-count-badge', 'tax-unmatched-badge', gFiles, unmatchedG, 'g');
+
+    // If full view modal is open, refresh it as well
+    const fullviewModal = document.getElementById('ren-fullview-modal');
+    if (fullviewModal && fullviewModal.classList.contains('show')) {
+        renderFullViewModalRows();
+    }
+}
+
+// Helper to render one table section (Order or Tax)
+function renderFileTableSection(tbodyId, countBadgeId, unmatchedBadgeId, fileList, unmatchedCount, category) {
+    const tbody = document.getElementById(tbodyId);
+    const countBadge = document.getElementById(countBadgeId);
+    const unmatchedBadge = document.getElementById(unmatchedBadgeId);
+
+    if (countBadge) countBadge.textContent = `${fileList.length} file${fileList.length === 1 ? '' : 's'}`;
+    if (unmatchedBadge) {
+        if (unmatchedCount > 0) {
+            unmatchedBadge.textContent = `⚠️ ${unmatchedCount} Need Prefix`;
+            unmatchedBadge.classList.remove('hidden');
+        } else {
+            unmatchedBadge.classList.add('hidden');
+        }
+    }
+
+    if (!tbody) return;
+    tbody.innerHTML = '';
+
+    if (fileList.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 1.5rem; font-size: 0.74rem;">No ${category === 'p2' ? 'Order' : 'Tax'} files uploaded yet.</td></tr>`;
+        return;
+    }
+
+    // Sort: Unmatched files ("Not Found") come FIRST (at the top)!
+    const sorted = [...fileList].sort((a, b) => {
+        const aUnmatched = (!a.renameCode || a.renameCode === "Not Found");
+        const bUnmatched = (!b.renameCode || b.renameCode === "Not Found");
+        if (aUnmatched && !bUnmatched) return -1;
+        if (!aUnmatched && bUnmatched) return 1;
+        return a.id - b.id;
+    });
+
+    sorted.forEach((file, idx) => {
+        const isUnmatched = (!file.renameCode || file.renameCode === "Not Found");
+        const tr = document.createElement('tr');
+        tr.className = isUnmatched ? 'row-unmatched-warning' : `row-color-${idx % 7}`;
+        if (isUnmatched) {
+            tr.style.background = "rgba(220, 38, 38, 0.08)";
+            tr.style.borderLeft = "3.5px solid #dc2626";
+        }
+
+        const codeBadge = isUnmatched
+            ? `<span class="badge" style="background: rgba(220, 38, 38, 0.15); color: #dc2626; border: 1px solid rgba(220, 38, 38, 0.3); font-weight: 700;">⚠️ Not Found</span>`
+            : `<span class="badge ${category === 'p2' ? 'badge-od' : 'badge-dt'}" style="font-weight: 700;">${file.renameCode}</span>`;
+
+        tr.innerHTML = `
+            <td><strong>${idx + 1}</strong></td>
+            <td>
+                <span class="file-name btn-inspect-file" style="cursor: pointer; font-weight: 600; color: var(--text-primary); text-decoration: underline dotted;" title="Click to view Excel rows">${file.name}</span>
+            </td>
+            <td>${codeBadge}</td>
+            <td><span style="color: var(--primary); font-weight: 600; font-size: 0.78rem;">${file.renamedName}</span></td>
+            <td style="text-align: center;">
+                <div style="display: inline-flex; gap: 4px;">
+                    <button class="btn-action btn-inspect-file" title="Inspect first 50 rows" style="width: 24px; height: 24px; border-radius: 6px; border: none; background: rgba(124, 58, 237, 0.08); color: var(--primary); cursor: pointer;">
+                        <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                    </button>
+                    <button class="btn-action btn-edit-prefix" title="Manually edit prefix code" style="width: 24px; height: 24px; border-radius: 6px; border: none; background: rgba(5, 150, 105, 0.08); color: #059669; cursor: pointer;">
+                        <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                    </button>
+                    <button class="btn-action btn-del-file" title="Delete file" style="width: 24px; height: 24px; border-radius: 6px; border: none; background: rgba(220, 38, 38, 0.08); color: var(--color-danger); cursor: pointer;">
+                        <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                    </button>
+                </div>
+            </td>
+        `;
+
+        tr.querySelectorAll('.btn-inspect-file').forEach(el => el.addEventListener('click', () => openRenFileInspector(file)));
+        const btnEdit = tr.querySelector('.btn-edit-prefix');
+        if (btnEdit) btnEdit.addEventListener('click', () => openEditPrefixModal(file));
+        const btnDel = tr.querySelector('.btn-del-file');
+        if (btnDel) btnDel.addEventListener('click', () => removeRenFile(file.id));
+
+        tbody.appendChild(tr);
+    });
+}
+
+// Move Order Files to Merge File Tab
+function moveToMergeTab() {
+    const orderFiles = renUploadedFiles.filter(f => f.methodType === 'p2');
+    if (orderFiles.length === 0) {
+        showToast("No Order files available to move.", "error");
+        return;
+    }
+
+    const filesToMerge = orderFiles.map(f => new File([f.fileObj], f.renamedName, { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+    
+    // Pass directly to merge tab handler
+    handleMrgFileSelection(filesToMerge);
+
+    // Switch active tab to tab-merge
+    const mergeTabBtn = document.getElementById('btn-merge-file') || document.querySelector('.tab-btn[data-tab="tab-merge"]');
+    if (mergeTabBtn) mergeTabBtn.click();
+
+    showToast(`${orderFiles.length} Order files transferred to Merge File tab!`, "success");
+}
+
+// Move Tax Files to Folder Create Tab
+function moveToFolderCreateTab() {
+    const taxFiles = renUploadedFiles.filter(f => f.methodType === 'g');
+    if (taxFiles.length === 0) {
+        showToast("No Tax files available to move.", "error");
+        return;
+    }
+
+    const filesToFolder = taxFiles.map(f => new File([f.fileObj], f.renamedName, { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+
+    // Pass directly to folder create handler
+    handleFldFileSelection(filesToFolder);
+
+    // Switch active tab to tab-folder-create
+    const folderTabBtn = document.getElementById('btn-folder-create-tab') || document.querySelector('.tab-btn[data-tab="tab-folder-create"]');
+    if (folderTabBtn) folderTabBtn.click();
+
+    showToast(`${taxFiles.length} Tax files transferred to Folder Create tab!`, "success");
+}
+
+// Download Zip function (Order only, Tax only, or All)
+async function downloadRenZip(category = 'all') {
+    let filesToZip = renUploadedFiles;
+    let zipName = "myntra_all_files_renamed.zip";
+
+    if (category === 'p2') {
+        filesToZip = renUploadedFiles.filter(f => f.methodType === 'p2');
+        zipName = "myntra_order_files_renamed.zip";
+    } else if (category === 'g') {
+        filesToZip = renUploadedFiles.filter(f => f.methodType === 'g');
+        zipName = "myntra_tax_files_renamed.zip";
+    }
+
+    if (filesToZip.length === 0) {
+        showToast("No files available to download for this category.", "error");
         return;
     }
 
@@ -3359,67 +4775,125 @@ async function runRenameProcess() {
     const renProgressText = document.getElementById('ren-progress-text');
     const renProgressFill = document.getElementById('ren-progress-fill');
 
-    btnRenameRun.disabled = true;
-    renProgress.classList.remove('hidden');
+    if (renProgress) renProgress.classList.remove('hidden');
 
     const updateRenProgress = (percent, text) => {
-        renProgressPercent.textContent = `${Math.round(percent)}%`;
-        renProgressFill.style.width = `${percent}%`;
-        if (text) renProgressText.textContent = text;
+        if (renProgressPercent) renProgressPercent.textContent = `${Math.round(percent)}%`;
+        if (renProgressFill) renProgressFill.style.width = `${percent}%`;
+        if (renProgressText && text) renProgressText.textContent = text;
     };
 
-    updateRenProgress(10, "Packaging renamed files...");
-    await new Promise(r => setTimeout(r, 50));
+    updateRenProgress(10, `Packaging ${filesToZip.length} files...`);
+    await new Promise(r => setTimeout(r, 40));
 
     try {
         const zip = new JSZip();
 
-        for (let i = 0; i < renUploadedFiles.length; i++) {
-            const file = renUploadedFiles[i];
-            const fileProgress = 10 + Math.round((i / renUploadedFiles.length) * 80);
-            updateRenProgress(fileProgress, `Adding to ZIP: ${file.renamedName}...`);
-            await new Promise(r => setTimeout(r, 15));
+        for (let i = 0; i < filesToZip.length; i++) {
+            const file = filesToZip[i];
+            const fileProgress = 10 + Math.round((i / filesToZip.length) * 80);
+            updateRenProgress(fileProgress, `Adding: ${file.renamedName}...`);
+            await new Promise(r => setTimeout(r, 10));
 
             zip.file(file.renamedName, file.fileObj);
         }
 
-        updateRenProgress(95, "Generating ZIP container...");
-        await new Promise(r => setTimeout(r, 50));
+        updateRenProgress(95, "Generating ZIP package...");
+        await new Promise(r => setTimeout(r, 40));
 
-        renGeneratedZipBlob = await zip.generateAsync({ type: "blob" });
-        const renMethodInput = document.querySelector('input[name="ren-method"]:checked');
-        const isP2Method = renMethodInput ? (renMethodInput.value === "yes") : true;
-        renGeneratedZipName = isP2Method ? `myntra_order_rename_file.zip` : `myntra_tax_rename_file.zip`;
+        const blob = await zip.generateAsync({ type: "blob" });
 
-        updateRenProgress(100, "Success!");
-        showToast("Files renamed successfully! Click Download ZIP to save.", "success");
+        updateRenProgress(100, "Downloading!");
+
+        // Trigger browser download
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = zipName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
 
         setTimeout(() => {
-            renProgress.classList.add('hidden');
-            renProgressPercent.textContent = "0%";
-            renProgressFill.style.width = "0%";
-            renProgressText.textContent = "Processing rename...";
-            
-            // Switch button to download state
-            btnRenameRun.disabled = false;
-            btnRenameRun.innerHTML = `
-                <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 5px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-                Download Renamed ZIP
-            `;
-            btnRenameRun.style.background = "var(--color-od)";
-            btnRenameRun.style.borderColor = "var(--color-od)";
+            URL.revokeObjectURL(url);
+            if (renProgress) {
+                renProgress.classList.add('hidden');
+                if (renProgressPercent) renProgressPercent.textContent = "0%";
+                if (renProgressFill) renProgressFill.style.width = "0%";
+            }
         }, 1200);
+
+        showToast(`${zipName} downloaded successfully!`, "success");
 
     } catch (err) {
         console.error(err);
         showToast("Error generating zip: " + err.message, "error");
-        renProgress.classList.add('hidden');
-        btnRenameRun.disabled = false;
+        if (renProgress) renProgress.classList.add('hidden');
     }
 }
 
 // ==========================================
-// MERGE FILE TAB OPERATIONS
+// GLOBAL DELETE CONFIRMATION MODAL
+// ==========================================
+
+let pendingDeleteCallback = null;
+
+function showDeleteConfirmation({ title = "Confirm Delete", message = "Are you sure you want to delete this item?", onConfirm }) {
+    const modal = document.getElementById('confirm-delete-modal');
+    const titleElem = document.getElementById('confirm-delete-title');
+    const descElem = document.getElementById('confirm-delete-desc');
+
+    if (!modal) {
+        if (confirm(message)) {
+            if (typeof onConfirm === 'function') onConfirm();
+        }
+        return;
+    }
+
+    if (titleElem) titleElem.textContent = title;
+    if (descElem) descElem.textContent = message;
+
+    pendingDeleteCallback = onConfirm;
+
+    modal.classList.add('show');
+    modal.classList.remove('hidden');
+}
+
+function closeDeleteConfirmation() {
+    const modal = document.getElementById('confirm-delete-modal');
+    if (modal) {
+        modal.classList.remove('show');
+        modal.classList.add('hidden');
+    }
+    pendingDeleteCallback = null;
+}
+
+function setupDeleteConfirmationModal() {
+    const modal = document.getElementById('confirm-delete-modal');
+    const btnClose = document.getElementById('btn-close-confirm-delete');
+    const btnCancel = document.getElementById('btn-cancel-confirm-delete');
+    const btnAction = document.getElementById('btn-action-confirm-delete');
+
+    if (btnClose) btnClose.addEventListener('click', closeDeleteConfirmation);
+    if (btnCancel) btnCancel.addEventListener('click', closeDeleteConfirmation);
+    if (modal) {
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) closeDeleteConfirmation();
+        });
+    }
+    if (btnAction) {
+        btnAction.addEventListener('click', () => {
+            const cb = pendingDeleteCallback;
+            closeDeleteConfirmation();
+            if (typeof cb === 'function') {
+                cb();
+            }
+        });
+    }
+}
+
+// ==========================================
+// MERGE FILE TAB OPERATIONS (1-Hour Session, Full View, Edit Key, Move to Folder)
 // ==========================================
 
 // State Variables for Merge File tab
@@ -3431,47 +4905,227 @@ let mrgGeneratedZipName = "";
 let mrgSingleFileBlob = null; // If only 1 merged output, store as Excel blob directly
 let mrgSingleFileName = "";
 let mrgNextId = 1;
+let mrgSessionTimerInterval = null;
+let mrgActiveEditGroupKey = null;
+
+// IndexedDB Session Storage Config (1 Hour Expiry) for Merge Tab
+const MRG_DB_NAME = 'MyntraMergeCacheDB';
+const MRG_DB_STORE = 'mergeSession';
+const MRG_DB_VERSION = 1;
+const MRG_SESSION_EXPIRY_MS = 60 * 60 * 1000; // 1 Hour in ms
+
+function openMergeDB() {
+    return new Promise((resolve) => {
+        if (!window.indexedDB) {
+            resolve(null);
+            return;
+        }
+        try {
+            const req = indexedDB.open(MRG_DB_NAME, MRG_DB_VERSION);
+            req.onupgradeneeded = (e) => {
+                const db = e.target.result;
+                if (!db.objectStoreNames.contains(MRG_DB_STORE)) {
+                    db.createObjectStore(MRG_DB_STORE, { keyPath: 'id' });
+                }
+            };
+            req.onsuccess = (e) => resolve(e.target.result);
+            req.onerror = () => resolve(null);
+        } catch (e) {
+            resolve(null);
+        }
+    });
+}
+
+async function saveMergeSessionToStorage() {
+    try {
+        const db = await openMergeDB();
+        if (!db) return;
+
+        if (mrgUploadedFiles.length === 0) {
+            const tx = db.transaction([MRG_DB_STORE], 'readwrite');
+            tx.objectStore(MRG_DB_STORE).delete('currentSession');
+            hideMrgSessionBanner();
+            return;
+        }
+
+        const serializedFiles = mrgUploadedFiles.map(f => ({
+            id: f.id,
+            name: f.name,
+            ext: f.ext,
+            groupKey: f.groupKey,
+            aoa: f.aoa ? f.aoa.slice(0, 50) : null,
+            blob: f.fileObj
+        }));
+
+        const expiresAt = Date.now() + MRG_SESSION_EXPIRY_MS;
+        const sessionData = {
+            id: 'currentSession',
+            timestamp: Date.now(),
+            expiresAt: expiresAt,
+            files: serializedFiles
+        };
+
+        const tx = db.transaction([MRG_DB_STORE], 'readwrite');
+        tx.objectStore(MRG_DB_STORE).put(sessionData);
+        startMrgSessionTimer(expiresAt);
+    } catch (err) {
+        console.warn("Merge IndexedDB save error:", err);
+    }
+}
+
+async function loadMergeSessionFromStorage() {
+    try {
+        const db = await openMergeDB();
+        if (!db) return;
+
+        const tx = db.transaction([MRG_DB_STORE], 'readonly');
+        const store = tx.objectStore(MRG_DB_STORE);
+        const req = store.get('currentSession');
+
+        req.onsuccess = async () => {
+            const data = req.result;
+            if (!data) return;
+
+            const now = Date.now();
+            if (now > data.expiresAt) {
+                clearMergeSessionStorage();
+                return;
+            }
+
+            if (data.files && data.files.length > 0) {
+                mrgUploadedFiles = data.files.map(f => {
+                    let fileObj = f.blob;
+                    if (f.blob && !(f.blob instanceof Blob)) {
+                        fileObj = new Blob([f.blob]);
+                    }
+                    return {
+                        id: f.id,
+                        name: f.name,
+                        fileObj: fileObj,
+                        ext: f.ext,
+                        groupKey: f.groupKey || '',
+                        aoa: f.aoa || []
+                    };
+                });
+
+                mrgNextId = Math.max(...mrgUploadedFiles.map(f => f.id), 0) + 1;
+                recalculateMergeGroups();
+                renderMergePreview();
+                startMrgSessionTimer(data.expiresAt);
+                showToast(`Restored ${mrgUploadedFiles.length} files in Merge tab from 1-hour session!`, "info");
+            }
+        };
+    } catch (err) {
+        console.warn("Merge IndexedDB load error:", err);
+    }
+}
+
+async function clearMergeSessionStorage() {
+    try {
+        const db = await openMergeDB();
+        if (!db) return;
+        const tx = db.transaction([MRG_DB_STORE], 'readwrite');
+        tx.objectStore(MRG_DB_STORE).delete('currentSession');
+        hideMrgSessionBanner();
+    } catch (err) {
+        console.warn("Merge IndexedDB clear error:", err);
+    }
+}
+
+function startMrgSessionTimer(expiresAt) {
+    const banner = document.getElementById('mrg-session-banner');
+    const timerElem = document.getElementById('mrg-session-timer');
+    if (!banner || !timerElem) return;
+
+    banner.classList.remove('hidden');
+
+    if (mrgSessionTimerInterval) clearInterval(mrgSessionTimerInterval);
+
+    const updateTimer = () => {
+        const remainingMs = expiresAt - Date.now();
+        if (remainingMs <= 0) {
+            timerElem.textContent = "Session expired";
+            clearInterval(mrgSessionTimerInterval);
+            clearMergeSessionStorage();
+            return;
+        }
+        const mins = Math.floor(remainingMs / (60 * 1000));
+        const secs = Math.floor((remainingMs % (60 * 1000)) / 1000);
+        timerElem.textContent = `Auto-clears in ${mins}m ${secs}s`;
+    };
+
+    updateTimer();
+    mrgSessionTimerInterval = setInterval(updateTimer, 1000);
+}
+
+function hideMrgSessionBanner() {
+    const banner = document.getElementById('mrg-session-banner');
+    if (banner) banner.classList.add('hidden');
+    if (mrgSessionTimerInterval) {
+        clearInterval(mrgSessionTimerInterval);
+        mrgSessionTimerInterval = null;
+    }
+}
 
 function setupMergeFile() {
     const mrgDropzone = document.getElementById('mrg-dropzone');
     const mrgFileInput = document.getElementById('mrg-file-input');
     const btnMergeRun = document.getElementById('btn-merge-run');
+    const btnMrgFullview = document.getElementById('btn-mrg-fullview');
+    const btnCloseMrgFullview = document.getElementById('btn-close-mrg-fullview');
+    const mrgFullviewSearch = document.getElementById('mrg-fullview-search');
+    const btnMrgMoveToFolder = document.getElementById('btn-mrg-move-to-folder');
+    const btnMrgDownloadZip = document.getElementById('btn-mrg-download-zip');
+
+    // Edit Group Key modal elements
+    const btnCloseEditGroupKey = document.getElementById('btn-close-edit-group-key');
+    const btnCancelEditGroupKey = document.getElementById('btn-cancel-edit-group-key');
+    const btnSaveEditGroupKey = document.getElementById('btn-save-edit-group-key');
+    const editGroupKeyInput = document.getElementById('edit-group-key-input');
     
-    if (!mrgDropzone || !mrgFileInput) return;
+    if (mrgDropzone && mrgFileInput) {
+        mrgDropzone.addEventListener('click', () => mrgFileInput.click());
+        mrgFileInput.addEventListener('change', (e) => handleMrgFileSelection(e.target.files));
 
-    // Dropzone Click
-    mrgDropzone.addEventListener('click', () => {
-        mrgFileInput.click();
-    });
+        mrgDropzone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            mrgDropzone.classList.add('dragover');
+        });
 
-    // File selection
-    mrgFileInput.addEventListener('change', (e) => {
-        handleMrgFileSelection(e.target.files);
-    });
+        mrgDropzone.addEventListener('dragleave', () => {
+            mrgDropzone.classList.remove('dragover');
+        });
 
-    // Drag & Drop
-    mrgDropzone.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        mrgDropzone.classList.add('dragover');
-    });
+        mrgDropzone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            mrgDropzone.classList.remove('dragover');
+            if (e.dataTransfer.files.length > 0) {
+                handleMrgFileSelection(e.dataTransfer.files);
+            }
+        });
+    }
 
-    mrgDropzone.addEventListener('dragleave', () => {
-        mrgDropzone.classList.remove('dragover');
-    });
+    if (btnMergeRun) btnMergeRun.addEventListener('click', runMergeProcess);
+    if (btnMrgFullview) btnMrgFullview.addEventListener('click', openMrgFullViewModal);
+    if (btnCloseMrgFullview) btnCloseMrgFullview.addEventListener('click', closeMrgFullViewModal);
+    if (mrgFullviewSearch) mrgFullviewSearch.addEventListener('input', renderMrgFullViewModalRows);
 
-    mrgDropzone.addEventListener('drop', (e) => {
-        e.preventDefault();
-        mrgDropzone.classList.remove('dragover');
-        if (e.dataTransfer.files.length > 0) {
-            handleMrgFileSelection(e.dataTransfer.files);
-        }
-    });
+    if (btnMrgMoveToFolder) btnMrgMoveToFolder.addEventListener('click', moveToFolderCreateFromMerge);
+    if (btnMrgDownloadZip) btnMrgDownloadZip.addEventListener('click', runMergeProcess);
 
-    // Run Merge Trigger
-    btnMergeRun.addEventListener('click', runMergeProcess);
+    if (btnCloseEditGroupKey) btnCloseEditGroupKey.addEventListener('click', closeEditGroupKeyModal);
+    if (btnCancelEditGroupKey) btnCancelEditGroupKey.addEventListener('click', closeEditGroupKeyModal);
+    if (btnSaveEditGroupKey) btnSaveEditGroupKey.addEventListener('click', saveEditGroupKey);
+    if (editGroupKeyInput) {
+        editGroupKeyInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') saveEditGroupKey();
+        });
+    }
+
+    // Restore 1-hour session from IndexedDB if available
+    loadMergeSessionFromStorage();
 }
 
-// Reset the merge button back to Merge Files action state
 function resetMergeButtonState() {
     mrgGeneratedZipBlob = null;
     mrgGeneratedZipName = "";
@@ -3483,13 +5137,26 @@ function resetMergeButtonState() {
             <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 5px;"><polyline points="16 3 21 3 21 8"></polyline><line x1="4" y1="20" x2="21" y2="3"></line><polyline points="21 16 21 21 16 21"></polyline><line x1="15" y1="15" x2="21" y2="21"></line><line x1="4" y1="4" x2="9" y2="9"></line></svg>
             Merge Files
         `;
-        btnMergeRun.style.background = ""; // Restore default style
+        btnMergeRun.style.background = "";
         btnMergeRun.style.borderColor = "";
     }
-    const mrgFileLabel = document.getElementById('mrg-file-label');
-    if (mrgFileLabel) {
-        mrgFileLabel.textContent = "Drag & Drop files here";
-    }
+}
+
+// Recalculate Groups Map & Unique Keys
+function recalculateMergeGroups() {
+    mrgGroupsMap = new Map();
+    mrgUniqueGroups = [];
+
+    mrgUploadedFiles.forEach(fileObj => {
+        const key = fileObj.groupKey || "Other";
+        if (!mrgGroupsMap.has(key)) {
+            mrgGroupsMap.set(key, []);
+            mrgUniqueGroups.push(key);
+        }
+        mrgGroupsMap.get(key).push(fileObj);
+    });
+
+    mrgUniqueGroups.sort();
 }
 
 // Handle selected merge files
@@ -3502,22 +5169,18 @@ async function handleMrgFileSelection(files) {
     const mrgProgressText = document.getElementById('mrg-progress-text');
     const mrgProgressFill = document.getElementById('mrg-progress-fill');
 
-    // Show inline progress box
-    mrgProgress.classList.remove('hidden');
+    if (mrgProgress) mrgProgress.classList.remove('hidden');
     const updateMrgProgress = (percent, text) => {
-        mrgProgressPercent.textContent = `${Math.round(percent)}%`;
-        mrgProgressFill.style.width = `${percent}%`;
-        if (text) mrgProgressText.textContent = text;
+        if (mrgProgressPercent) mrgProgressPercent.textContent = `${Math.round(percent)}%`;
+        if (mrgProgressFill) mrgProgressFill.style.width = `${percent}%`;
+        if (mrgProgressText && text) mrgProgressText.textContent = text;
     };
 
     updateMrgProgress(5, "Reading uploaded files...");
-    
-    // Clear previous files list
     mrgUploadedFiles = [];
     mrgNextId = 1;
 
     try {
-        // Build flat list of files (resolving any ZIP files)
         const flatFilesList = [];
         for (let i = 0; i < files.length; i++) {
             const file = files[i];
@@ -3537,15 +5200,9 @@ async function handleMrgFileSelection(files) {
         }
 
         if (flatFilesList.length === 0) {
-            mrgProgress.classList.add('hidden');
+            if (mrgProgress) mrgProgress.classList.add('hidden');
             showToast("No valid Excel or CSV files found.", "error");
             return;
-        }
-
-        // Update the file label text on screen
-        const mrgFileLabel = document.getElementById('mrg-file-label');
-        if (mrgFileLabel) {
-            mrgFileLabel.textContent = `${flatFilesList.length} files loaded`;
         }
 
         for (let i = 0; i < flatFilesList.length; i++) {
@@ -3576,81 +5233,419 @@ async function handleMrgFileSelection(files) {
         updateMrgProgress(95, "Grouping files by prefix key...");
         await new Promise(r => setTimeout(r, 20));
 
-        // Perform prefix grouping
-        mrgGroupsMap = new Map();
-        mrgUniqueGroups = [];
-
-        mrgUploadedFiles.forEach(fileObj => {
-            const key = fileObj.groupKey;
-            if (!mrgGroupsMap.has(key)) {
-                mrgGroupsMap.set(key, []);
-                mrgUniqueGroups.push(key);
-            }
-            mrgGroupsMap.get(key).push(fileObj);
-        });
-
-        // Sort groups alphabetically
-        mrgUniqueGroups.sort();
-
+        recalculateMergeGroups();
         renderMergePreview();
+        saveMergeSessionToStorage();
 
         updateMrgProgress(100, "Done!");
         showToast(`${mrgUploadedFiles.length} files loaded for merging!`, "success");
         
         setTimeout(() => {
-            mrgProgress.classList.add('hidden');
-            mrgProgressPercent.textContent = "0%";
-            mrgProgressFill.style.width = "0%";
-            mrgProgressText.textContent = "Processing merge...";
+            if (mrgProgress) {
+                mrgProgress.classList.add('hidden');
+                if (mrgProgressPercent) mrgProgressPercent.textContent = "0%";
+                if (mrgProgressFill) mrgProgressFill.style.width = "0%";
+                if (mrgProgressText) mrgProgressText.textContent = "Processing merge...";
+            }
         }, 1200);
 
     } catch (err) {
         console.error(err);
         showToast("Error reading files: " + err.message, "error");
-        mrgProgress.classList.add('hidden');
+        if (mrgProgress) mrgProgress.classList.add('hidden');
     }
 }
 
-// Render preview list
+// Render preview list in main tab
 function renderMergePreview() {
     const mrgGroupCount = document.getElementById('mrg-group-count');
     const mrgPreviewTbody = document.getElementById('mrg-preview-tbody');
     const mrgEmptyState = document.getElementById('mrg-empty-state');
     const mrgTableContainer = document.getElementById('mrg-table-container');
     const btnMergeRun = document.getElementById('btn-merge-run');
+    const mrgHeaderActions = document.getElementById('mrg-header-actions');
+    const mrgFileLabel = document.getElementById('mrg-file-label');
 
-    mrgGroupCount.textContent = `${mrgUniqueGroups.length} groups detected`;
-    mrgPreviewTbody.innerHTML = '';
+    if (mrgGroupCount) mrgGroupCount.textContent = `${mrgUniqueGroups.length} groups detected (${mrgUploadedFiles.length} files)`;
+    if (mrgFileLabel) mrgFileLabel.textContent = mrgUploadedFiles.length > 0 ? `${mrgUploadedFiles.length} files loaded` : "Drag & Drop files here";
 
     if (mrgUniqueGroups.length === 0) {
-        mrgEmptyState.classList.remove('hidden');
-        mrgTableContainer.classList.add('hidden');
-        btnMergeRun.classList.add('hidden');
+        if (mrgEmptyState) mrgEmptyState.classList.remove('hidden');
+        if (mrgTableContainer) mrgTableContainer.classList.add('hidden');
+        if (btnMergeRun) btnMergeRun.classList.add('hidden');
+        if (mrgHeaderActions) mrgHeaderActions.classList.add('hidden');
+        if (mrgPreviewTbody) mrgPreviewTbody.innerHTML = '';
         return;
     }
 
-    mrgEmptyState.classList.add('hidden');
-    mrgTableContainer.classList.remove('hidden');
-    btnMergeRun.classList.remove('hidden');
+    if (mrgEmptyState) mrgEmptyState.classList.add('hidden');
+    if (mrgTableContainer) mrgTableContainer.classList.remove('hidden');
+    if (btnMergeRun) btnMergeRun.classList.remove('hidden');
+    if (mrgHeaderActions) mrgHeaderActions.classList.remove('hidden');
+
+    if (!mrgPreviewTbody) return;
+    mrgPreviewTbody.innerHTML = '';
 
     mrgUniqueGroups.forEach((key, idx) => {
-        const filesInGroup = mrgGroupsMap.get(key);
+        const filesInGroup = mrgGroupsMap.get(key) || [];
         const sourceNames = filesInGroup.map(f => f.name).join(', ');
-        
-        // Output format: [key]-DropShipOrderReports-MYNTRA-[key].xlsx
         const outputFilename = `${key}-DropShipOrderReports-MYNTRA-${key}.xlsx`;
 
         const tr = document.createElement('tr');
         tr.className = `row-color-${idx % 7}`;
-        
+
         tr.innerHTML = `
             <td><strong>${idx + 1}</strong></td>
-            <td><span class="badge badge-dt">${key}</span></td>
-            <td><span class="file-name" title="${sourceNames}">${filesInGroup.length} files (${sourceNames})</span></td>
-            <td><span style="color: var(--primary); font-weight: 500; font-size: 0.8rem;">${outputFilename}</span></td>
+            <td><span class="badge badge-dt" style="font-weight: 700;">${key}</span></td>
+            <td>
+                <div style="display: flex; flex-direction: column; gap: 2px;">
+                    <span style="font-weight: 600; color: var(--text-primary); font-size: 0.76rem;">${filesInGroup.length} files</span>
+                    <span class="file-name" style="font-size: 0.72rem; color: var(--text-secondary); max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${sourceNames}">${sourceNames}</span>
+                </div>
+            </td>
+            <td><span style="color: var(--primary); font-weight: 600; font-size: 0.78rem;">${outputFilename}</span></td>
+            <td style="text-align: center;">
+                <div style="display: inline-flex; gap: 4px;">
+                    <button class="btn-action btn-inspect-group" title="Inspect source files (first 50 rows)" style="width: 24px; height: 24px; border-radius: 6px; border: none; background: rgba(124, 58, 237, 0.08); color: var(--primary); cursor: pointer;">
+                        <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                    </button>
+                    <button class="btn-action btn-edit-group-key" title="Edit Group Key (regroup files)" style="width: 24px; height: 24px; border-radius: 6px; border: none; background: rgba(5, 150, 105, 0.08); color: #059669; cursor: pointer;">
+                        <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                    </button>
+                    <button class="btn-action btn-del-group" title="Delete Group" style="width: 24px; height: 24px; border-radius: 6px; border: none; background: rgba(220, 38, 38, 0.08); color: var(--color-danger); cursor: pointer;">
+                        <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                    </button>
+                </div>
+            </td>
         `;
+
+        const btnInspect = tr.querySelector('.btn-inspect-group');
+        if (btnInspect) {
+            btnInspect.addEventListener('click', () => {
+                if (filesInGroup.length > 0) openRenFileInspector(filesInGroup[0]);
+            });
+        }
+
+        const btnEdit = tr.querySelector('.btn-edit-group-key');
+        if (btnEdit) {
+            btnEdit.addEventListener('click', () => openEditGroupKeyModal(key));
+        }
+
+        const btnDel = tr.querySelector('.btn-del-group');
+        if (btnDel) {
+            btnDel.addEventListener('click', () => {
+                showDeleteConfirmation({
+                    title: `Delete Group "${key}"?`,
+                    message: `Are you sure you want to delete group "${key}" (${filesInGroup.length} file${filesInGroup.length === 1 ? '' : 's'})?`,
+                    onConfirm: () => removeMergeGroup(key)
+                });
+            });
+        }
+
         mrgPreviewTbody.appendChild(tr);
     });
+}
+
+// Remove an entire group from merge
+function removeMergeGroup(groupKey) {
+    mrgUploadedFiles = mrgUploadedFiles.filter(f => f.groupKey !== groupKey);
+    recalculateMergeGroups();
+    resetMergeButtonState();
+    renderMergePreview();
+    const fullviewModal = document.getElementById('mrg-fullview-modal');
+    if (fullviewModal && fullviewModal.classList.contains('show')) {
+        renderMrgFullViewModalRows();
+    }
+    saveMergeSessionToStorage();
+    showToast(`Group "${groupKey}" deleted.`, "info");
+}
+
+// Remove an individual file from merge queue
+function removeMergeFile(fileId) {
+    const file = mrgUploadedFiles.find(f => f.id === fileId);
+    const fileName = file ? file.name : "File";
+    showDeleteConfirmation({
+        title: `Delete File "${fileName}"?`,
+        message: `Are you sure you want to delete this file from merge queue?`,
+        onConfirm: () => {
+            mrgUploadedFiles = mrgUploadedFiles.filter(f => f.id !== fileId);
+            recalculateMergeGroups();
+            resetMergeButtonState();
+            renderMergePreview();
+            const fullviewModal = document.getElementById('mrg-fullview-modal');
+            if (fullviewModal && fullviewModal.classList.contains('show')) {
+                renderMrgFullViewModalRows();
+            }
+            saveMergeSessionToStorage();
+            showToast(`File deleted from merge queue.`, "info");
+        }
+    });
+}
+
+// Open Full View Modal for Merge Tab
+function openMrgFullViewModal() {
+    const modal = document.getElementById('mrg-fullview-modal');
+    const searchInput = document.getElementById('mrg-fullview-search');
+    if (!modal) return;
+    if (searchInput) searchInput.value = '';
+    renderMrgFullViewModalRows();
+    modal.classList.add('show');
+    modal.classList.remove('hidden');
+}
+
+function closeMrgFullViewModal() {
+    const modal = document.getElementById('mrg-fullview-modal');
+    if (modal) {
+        modal.classList.remove('show');
+        modal.classList.add('hidden');
+    }
+}
+
+function renderMrgFullViewModalRows() {
+    const tbody = document.getElementById('tbody-mrg-fullview-files');
+    const countTag = document.getElementById('mrg-fullview-count');
+    const searchInput = document.getElementById('mrg-fullview-search');
+    const query = searchInput ? searchInput.value.trim().toLowerCase() : "";
+
+    if (!tbody) return;
+    tbody.innerHTML = '';
+
+    let groups = [...mrgUniqueGroups];
+    if (query) {
+        groups = groups.filter(key => {
+            if (key.toLowerCase().includes(query)) return true;
+            const files = mrgGroupsMap.get(key) || [];
+            return files.some(f => f.name.toLowerCase().includes(query));
+        });
+    }
+
+    if (countTag) countTag.textContent = `${groups.length} groups (${mrgUploadedFiles.length} files)`;
+
+    if (groups.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 2rem;">No matching groups found.</td></tr>`;
+        return;
+    }
+
+    groups.forEach((key, idx) => {
+        const filesInGroup = mrgGroupsMap.get(key) || [];
+        const sourceNames = filesInGroup.map(f => f.name).join(', ');
+        const outputFilename = `${key}-DropShipOrderReports-MYNTRA-${key}.xlsx`;
+
+        const tr = document.createElement('tr');
+        tr.className = `row-color-${idx % 7}`;
+
+        tr.innerHTML = `
+            <td><strong>${idx + 1}</strong></td>
+            <td><span class="badge badge-dt" style="font-weight: 700; font-size: 0.8rem;">${key}</span></td>
+            <td>
+                <div style="display: flex; flex-direction: column; gap: 4px;">
+                    <span style="font-weight: 700; color: var(--text-primary); font-size: 0.78rem;">${filesInGroup.length} Source Files:</span>
+                    <ul style="margin: 0; padding-left: 1.1rem; font-size: 0.74rem; color: var(--text-secondary);">
+                        ${filesInGroup.map(f => `<li><span class="file-name btn-inspect-one" data-fileid="${f.id}" style="cursor: pointer; text-decoration: underline dotted;" title="Click to inspect 50 rows">${f.name}</span></li>`).join('')}
+                    </ul>
+                </div>
+            </td>
+            <td><span style="color: var(--primary); font-weight: 600; font-size: 0.82rem;">${outputFilename}</span></td>
+            <td style="text-align: center;">
+                <div style="display: inline-flex; gap: 5px;">
+                    <button class="btn-action btn-inspect-group" title="Inspect first 50 rows" style="width: 26px; height: 26px; border-radius: 6px; border: none; background: rgba(124, 58, 237, 0.08); color: var(--primary); cursor: pointer;">
+                        <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                    </button>
+                    <button class="btn-action btn-edit-group-key" title="Edit Group Key (regroup)" style="width: 26px; height: 26px; border-radius: 6px; border: none; background: rgba(5, 150, 105, 0.08); color: #059669; cursor: pointer;">
+                        <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                    </button>
+                    <button class="btn-action btn-del-group" title="Delete Group" style="width: 26px; height: 26px; border-radius: 6px; border: none; background: rgba(220, 38, 38, 0.08); color: var(--color-danger); cursor: pointer;">
+                        <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                    </button>
+                </div>
+            </td>
+        `;
+
+        tr.querySelectorAll('.btn-inspect-one').forEach(elem => {
+            elem.addEventListener('click', (e) => {
+                const fileId = parseInt(elem.getAttribute('data-fileid'), 10);
+                const targetFile = filesInGroup.find(f => f.id === fileId);
+                if (targetFile) openRenFileInspector(targetFile);
+            });
+        });
+
+        const btnInspect = tr.querySelector('.btn-inspect-group');
+        if (btnInspect) {
+            btnInspect.addEventListener('click', () => {
+                if (filesInGroup.length > 0) openRenFileInspector(filesInGroup[0]);
+            });
+        }
+
+        const btnEdit = tr.querySelector('.btn-edit-group-key');
+        if (btnEdit) {
+            btnEdit.addEventListener('click', () => openEditGroupKeyModal(key));
+        }
+
+        const btnDel = tr.querySelector('.btn-del-group');
+        if (btnDel) {
+            btnDel.addEventListener('click', () => {
+                showDeleteConfirmation({
+                    title: `Delete Group "${key}"?`,
+                    message: `Are you sure you want to delete group "${key}" (${filesInGroup.length} file${filesInGroup.length === 1 ? '' : 's'})?`,
+                    onConfirm: () => removeMergeGroup(key)
+                });
+            });
+        }
+
+        tbody.appendChild(tr);
+    });
+}
+
+// Edit Group Key Modal functions
+function openEditGroupKeyModal(groupKey) {
+    mrgActiveEditGroupKey = groupKey;
+    const modal = document.getElementById('edit-group-key-modal');
+    const currElem = document.getElementById('edit-group-key-current');
+    const inputElem = document.getElementById('edit-group-key-input');
+
+    if (!modal) return;
+    if (currElem) currElem.textContent = groupKey;
+    if (inputElem) {
+        inputElem.value = groupKey;
+        setTimeout(() => inputElem.focus(), 100);
+    }
+
+    modal.classList.add('show');
+    modal.classList.remove('hidden');
+}
+
+function closeEditGroupKeyModal() {
+    const modal = document.getElementById('edit-group-key-modal');
+    if (modal) {
+        modal.classList.remove('show');
+        modal.classList.add('hidden');
+    }
+    mrgActiveEditGroupKey = null;
+}
+
+function saveEditGroupKey() {
+    if (!mrgActiveEditGroupKey) return;
+    const inputElem = document.getElementById('edit-group-key-input');
+    const newKey = inputElem ? inputElem.value.trim() : "";
+
+    if (!newKey) {
+        showToast("Please enter a valid group key.", "error");
+        return;
+    }
+
+    const oldKey = mrgActiveEditGroupKey;
+    mrgUploadedFiles.forEach(file => {
+        if (file.groupKey === oldKey) {
+            file.groupKey = newKey;
+            // Update filename prefix if filename started with old key
+            const baseName = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
+            const ext = file.ext ? `.${file.ext}` : '';
+            const parts = baseName.split('-');
+            if (parts.length > 1) {
+                parts[0] = newKey;
+                file.name = parts.join('-') + ext;
+            }
+        }
+    });
+
+    recalculateMergeGroups();
+    resetMergeButtonState();
+    renderMergePreview();
+    const fullviewModal = document.getElementById('mrg-fullview-modal');
+    if (fullviewModal && fullviewModal.classList.contains('show')) {
+        renderMrgFullViewModalRows();
+    }
+    saveMergeSessionToStorage();
+    closeEditGroupKeyModal();
+    showToast(`Group key changed from "${oldKey}" to "${newKey}"!`, "success");
+}
+
+// Move to Folder Create Tab from Merge Tab
+async function moveToFolderCreateFromMerge() {
+    if (mrgUniqueGroups.length === 0) {
+        showToast("No merged groups available to move.", "error");
+        return;
+    }
+
+    const mrgProgress = document.getElementById('mrg-progress');
+    const mrgProgressPercent = document.getElementById('mrg-progress-percent');
+    const mrgProgressText = document.getElementById('mrg-progress-text');
+    const mrgProgressFill = document.getElementById('mrg-progress-fill');
+
+    if (mrgProgress) mrgProgress.classList.remove('hidden');
+    const updateProgress = (pct, txt) => {
+        if (mrgProgressPercent) mrgProgressPercent.textContent = `${Math.round(pct)}%`;
+        if (mrgProgressFill) mrgProgressFill.style.width = `${pct}%`;
+        if (mrgProgressText) mrgProgressText.textContent = txt;
+    };
+
+    updateProgress(15, "Generating merged Excel files for Folder Create...");
+    await new Promise(r => setTimeout(r, 40));
+
+    try {
+        const mergedFilesForFolder = [];
+
+        for (let i = 0; i < mrgUniqueGroups.length; i++) {
+            const key = mrgUniqueGroups[i];
+            const filesInGroup = mrgGroupsMap.get(key) || [];
+            
+            const progressPct = 15 + Math.round((i / mrgUniqueGroups.length) * 75);
+            updateProgress(progressPct, `Processing group: ${key}...`);
+            await new Promise(r => setTimeout(r, 10));
+
+            const mergedRows = [];
+            let headerWritten = false;
+
+            for (let fIdx = 0; fIdx < filesInGroup.length; fIdx++) {
+                const file = filesInGroup[fIdx];
+                let aoa = file.aoa;
+                if (!aoa || aoa.length === 0) {
+                    aoa = await readExcelAsAOA(file.fileObj);
+                }
+                if (!aoa || aoa.length === 0) continue;
+
+                if (!headerWritten) {
+                    for (let r = 0; r < aoa.length; r++) {
+                        mergedRows.push([...aoa[r]]);
+                    }
+                    headerWritten = true;
+                } else {
+                    if (aoa.length > 1) {
+                        for (let r = 1; r < aoa.length; r++) {
+                            mergedRows.push([...aoa[r]]);
+                        }
+                    }
+                }
+            }
+
+            const ws = XLSX.utils.aoa_to_sheet(mergedRows);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
+            const arrayBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+            const outputName = `${key}-DropShipOrderReports-MYNTRA-${key}.xlsx`;
+            const fileObj = new File([arrayBuffer], outputName, { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+            mergedFilesForFolder.push(fileObj);
+        }
+
+        updateProgress(100, "Done!");
+        setTimeout(() => {
+            if (mrgProgress) mrgProgress.classList.add('hidden');
+        }, 800);
+
+        // Pass merged files to Folder Create handler
+        handleFldFileSelection(mergedFilesForFolder);
+
+        // Switch active tab to Folder Create
+        const folderTabBtn = document.getElementById('btn-folder-create-tab') || document.querySelector('.tab-btn[data-tab="tab-folder-create"]');
+        if (folderTabBtn) folderTabBtn.click();
+
+        showToast(`${mergedFilesForFolder.length} merged files transferred to Folder Create tab!`, "success");
+
+    } catch (err) {
+        console.error(err);
+        if (mrgProgress) mrgProgress.classList.add('hidden');
+        showToast("Error moving to Folder Create: " + err.message, "error");
+    }
 }
 
 // Run the merge and download process
@@ -3661,7 +5656,6 @@ async function runMergeProcess() {
 
     // If already generated, download directly
     if (mrgSingleFileBlob) {
-        // Download single merged file directly
         const url = URL.createObjectURL(mrgSingleFileBlob);
         const a = document.createElement('a');
         a.href = url;
@@ -3677,7 +5671,6 @@ async function runMergeProcess() {
         showToast("Excel downloaded successfully!", "success");
         return;
     } else if (mrgGeneratedZipBlob) {
-        // Download zipped multiple merged files
         const url = URL.createObjectURL(mrgGeneratedZipBlob);
         const a = document.createElement('a');
         a.href = url;
@@ -3699,13 +5692,13 @@ async function runMergeProcess() {
     const mrgProgressText = document.getElementById('mrg-progress-text');
     const mrgProgressFill = document.getElementById('mrg-progress-fill');
 
-    btnMergeRun.disabled = true;
-    mrgProgress.classList.remove('hidden');
+    if (btnMergeRun) btnMergeRun.disabled = true;
+    if (mrgProgress) mrgProgress.classList.remove('hidden');
 
     const updateMrgProgress = (percent, text) => {
-        mrgProgressPercent.textContent = `${Math.round(percent)}%`;
-        mrgProgressFill.style.width = `${percent}%`;
-        if (text) mrgProgressText.textContent = text;
+        if (mrgProgressPercent) mrgProgressPercent.textContent = `${Math.round(percent)}%`;
+        if (mrgProgressFill) mrgProgressFill.style.width = `${percent}%`;
+        if (mrgProgressText && text) mrgProgressText.textContent = text;
     };
 
     updateMrgProgress(10, "Merging file groups...");
@@ -3716,7 +5709,7 @@ async function runMergeProcess() {
 
         for (let i = 0; i < mrgUniqueGroups.length; i++) {
             const key = mrgUniqueGroups[i];
-            const filesInGroup = mrgGroupsMap.get(key);
+            const filesInGroup = mrgGroupsMap.get(key) || [];
             
             const fileProgress = 10 + Math.round((i / mrgUniqueGroups.length) * 80);
             updateMrgProgress(fileProgress, `Merging group: ${key} (${i + 1}/${mrgUniqueGroups.length})...`);
@@ -3727,18 +5720,18 @@ async function runMergeProcess() {
 
             for (let fIdx = 0; fIdx < filesInGroup.length; fIdx++) {
                 const file = filesInGroup[fIdx];
-                const aoa = file.aoa || [];
-                
-                if (aoa.length === 0) continue;
+                let aoa = file.aoa;
+                if (!aoa || aoa.length === 0) {
+                    aoa = await readExcelAsAOA(file.fileObj);
+                }
+                if (!aoa || aoa.length === 0) continue;
 
                 if (!headerWritten) {
-                    // First non-empty file: Copy everything (headers + data rows)
                     for (let r = 0; r < aoa.length; r++) {
                         mergedRows.push([...aoa[r]]);
                     }
                     headerWritten = true;
                 } else {
-                    // Subsequent files: Copy starting from row index 1 (skipping header row)
                     if (aoa.length > 1) {
                         for (let r = 1; r < aoa.length; r++) {
                             mergedRows.push([...aoa[r]]);
@@ -3747,7 +5740,6 @@ async function runMergeProcess() {
                 }
             }
 
-            // Build new workbook using SheetJS
             const ws = XLSX.utils.aoa_to_sheet(mergedRows);
             const wb = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
@@ -3758,11 +5750,9 @@ async function runMergeProcess() {
             const outputName = `${key}-DropShipOrderReports-MYNTRA-${key}.xlsx`;
 
             if (mrgUniqueGroups.length === 1) {
-                // If only 1 group, save as single Excel directly
                 mrgSingleFileBlob = fileBlob;
                 mrgSingleFileName = outputName;
             } else {
-                // If multiple groups, add to ZIP
                 zip.file(outputName, fileBlob);
             }
         }
@@ -3780,32 +5770,35 @@ async function runMergeProcess() {
         showToast("Files merged successfully! Click Download to save.", "success");
 
         setTimeout(() => {
-            mrgProgress.classList.add('hidden');
-            mrgProgressPercent.textContent = "0%";
-            mrgProgressFill.style.width = "0%";
-            mrgProgressText.textContent = "Processing merge...";
-            
-            // Switch button to download state
-            btnMergeRun.disabled = false;
-            if (isSingle) {
-                btnMergeRun.innerHTML = `
-                    <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 5px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-                    Download Merged Excel
-                `;
-            } else {
-                btnMergeRun.innerHTML = `
-                    <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 5px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-                    Download Merged ZIP
-                `;
+            if (mrgProgress) {
+                mrgProgress.classList.add('hidden');
+                if (mrgProgressPercent) mrgProgressPercent.textContent = "0%";
+                if (mrgProgressFill) mrgProgressFill.style.width = "0%";
+                if (mrgProgressText) mrgProgressText.textContent = "Processing merge...";
             }
-            btnMergeRun.style.background = "var(--color-od)";
-            btnMergeRun.style.borderColor = "var(--color-od)";
+            
+            if (btnMergeRun) {
+                btnMergeRun.disabled = false;
+                if (isSingle) {
+                    btnMergeRun.innerHTML = `
+                        <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 5px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                        Download Merged Excel
+                    `;
+                } else {
+                    btnMergeRun.innerHTML = `
+                        <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 5px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                        Download Merged ZIP
+                    `;
+                }
+                btnMergeRun.style.background = "var(--color-od)";
+                btnMergeRun.style.borderColor = "var(--color-od)";
+            }
         }, 1200);
 
     } catch (err) {
         console.error(err);
         showToast("Error merging files: " + err.message, "error");
-        mrgProgress.classList.add('hidden');
+        if (mrgProgress) mrgProgress.classList.add('hidden');
         if (btnMergeRun) btnMergeRun.disabled = false;
     }
 }
@@ -4700,9 +6693,16 @@ function updateFldSelectedUI() {
             removeBtn.innerHTML = `<svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`;
             removeBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
-                fldUploadedFiles.splice(index, 1);
-                updateFldSelectedUI();
-                recalculateFldGroupsAndPreview();
+                showDeleteConfirmation({
+                    title: "Delete File?",
+                    message: `Are you sure you want to remove "${fileData.name}" from Folder Create list?`,
+                    onConfirm: () => {
+                        fldUploadedFiles.splice(index, 1);
+                        updateFldSelectedUI();
+                        recalculateFldGroupsAndPreview();
+                        showToast(`File "${fileData.name}" removed.`, "info");
+                    }
+                });
             });
             
             item.appendChild(details);
@@ -4716,125 +6716,658 @@ function updateFldSelectedUI() {
     }
 }
 
+// ==========================================
+// FOLDER CREATE TAB (1-Hour Session, Accordion, Copy/Paste to Error Folders, Full View, Move to Processor)
+// ==========================================
+
+let fldExpandedFolders = new Set();
+let fldSessionTimerInterval = null;
+let fldActiveCopyFile = null; // { fileObj, name, folderPrefix }
+let fldActiveManualTargetFolder = null; // folderPrefix
+let fldActiveEditFile = null; // fileData
+let fldFullViewFilter = 'all'; // 'all', 'complete', 'missing'
+
+// IndexedDB Session Storage Config (1 Hour Expiry) for Folder Create Tab
+const FLD_DB_NAME = 'MyntraFolderCreateCacheDB';
+const FLD_DB_STORE = 'folderSession';
+const FLD_DB_VERSION = 1;
+const FLD_SESSION_EXPIRY_MS = 60 * 60 * 1000; // 1 Hour
+
+function openFolderCreateDB() {
+    return new Promise((resolve) => {
+        if (!window.indexedDB) {
+            resolve(null);
+            return;
+        }
+        try {
+            const req = indexedDB.open(FLD_DB_NAME, FLD_DB_VERSION);
+            req.onupgradeneeded = (e) => {
+                const db = e.target.result;
+                if (!db.objectStoreNames.contains(FLD_DB_STORE)) {
+                    db.createObjectStore(FLD_DB_STORE, { keyPath: 'id' });
+                }
+            };
+            req.onsuccess = (e) => resolve(e.target.result);
+            req.onerror = () => resolve(null);
+        } catch (e) {
+            resolve(null);
+        }
+    });
+}
+
+async function saveFolderCreateSessionToStorage() {
+    try {
+        const db = await openFolderCreateDB();
+        if (!db) return;
+
+        if (fldUploadedFiles.length === 0) {
+            const tx = db.transaction([FLD_DB_STORE], 'readwrite');
+            tx.objectStore(FLD_DB_STORE).delete('currentSession');
+            hideFldSessionBanner();
+            return;
+        }
+
+        const serializedFiles = fldUploadedFiles.map(f => ({
+            name: f.name,
+            ext: f.ext,
+            folderName: f.folderName || '',
+            relativePath: f.relativePath || '',
+            blob: f.fileObj
+        }));
+
+        const expiresAt = Date.now() + FLD_SESSION_EXPIRY_MS;
+        const sessionData = {
+            id: 'currentSession',
+            timestamp: Date.now(),
+            expiresAt: expiresAt,
+            fldMode: fldMode,
+            files: serializedFiles
+        };
+
+        const tx = db.transaction([FLD_DB_STORE], 'readwrite');
+        tx.objectStore(FLD_DB_STORE).put(sessionData);
+        startFldSessionTimer(expiresAt);
+    } catch (err) {
+        console.warn("Folder Create IndexedDB save error:", err);
+    }
+}
+
+async function loadFolderCreateSessionFromStorage() {
+    try {
+        const db = await openFolderCreateDB();
+        if (!db) return;
+
+        const tx = db.transaction([FLD_DB_STORE], 'readonly');
+        const store = tx.objectStore(FLD_DB_STORE);
+        const req = store.get('currentSession');
+
+        req.onsuccess = async () => {
+            const data = req.result;
+            if (!data) return;
+
+            const now = Date.now();
+            if (now > data.expiresAt) {
+                clearFolderCreateSessionStorage();
+                return;
+            }
+
+            if (data.files && data.files.length > 0) {
+                fldUploadedFiles = data.files.map(f => {
+                    let fileBlob = f.blob;
+                    if (!(fileBlob instanceof Blob)) {
+                        fileBlob = new Blob([f.blob]);
+                    }
+                    return {
+                        name: f.name,
+                        ext: f.ext,
+                        folderName: f.folderName,
+                        relativePath: f.relativePath,
+                        fileObj: fileBlob
+                    };
+                });
+
+                if (data.fldMode) {
+                    fldMode = data.fldMode;
+                }
+
+                updateFldSelectedUI();
+                recalculateFldGroupsAndPreview();
+                startFldSessionTimer(data.expiresAt);
+                showToast(`Restored ${fldUploadedFiles.length} folder files from 1-hour session cache!`, "info");
+            }
+        };
+    } catch (err) {
+        console.warn("Folder Create IndexedDB load error:", err);
+    }
+}
+
+async function clearFolderCreateSessionStorage() {
+    try {
+        const db = await openFolderCreateDB();
+        if (!db) return;
+        const tx = db.transaction([FLD_DB_STORE], 'readwrite');
+        tx.objectStore(FLD_DB_STORE).delete('currentSession');
+        hideFldSessionBanner();
+    } catch (err) {
+        console.warn("Folder Create IndexedDB clear error:", err);
+    }
+}
+
+function startFldSessionTimer(expiresAt) {
+    const banner = document.getElementById('fld-session-banner');
+    const timerElem = document.getElementById('fld-session-timer');
+    if (!banner || !timerElem) return;
+
+    banner.classList.remove('hidden');
+
+    if (fldSessionTimerInterval) clearInterval(fldSessionTimerInterval);
+
+    const updateTimer = () => {
+        const remainingMs = expiresAt - Date.now();
+        if (remainingMs <= 0) {
+            timerElem.textContent = "Session expired";
+            clearInterval(fldSessionTimerInterval);
+            clearFolderCreateSessionStorage();
+            return;
+        }
+        const mins = Math.floor(remainingMs / (60 * 1000));
+        const secs = Math.floor((remainingMs % (60 * 1000)) / 1000);
+        timerElem.textContent = `Auto-clears in ${mins}m ${secs}s`;
+    };
+
+    updateTimer();
+    fldSessionTimerInterval = setInterval(updateTimer, 1000);
+}
+
+function hideFldSessionBanner() {
+    const banner = document.getElementById('fld-session-banner');
+    if (banner) banner.classList.add('hidden');
+    if (fldSessionTimerInterval) {
+        clearInterval(fldSessionTimerInterval);
+        fldSessionTimerInterval = null;
+    }
+}
+
+// Compute prefix groups from current uploaded files
+function getFldPrefixGroups() {
+    const groups = new Map();
+    if (fldMode === 'files') {
+        fldUploadedFiles.forEach((fileData, fileIndex) => {
+            const name = fileData.name;
+            let prefix = "Ungrouped";
+            if (name.includes("-")) {
+                prefix = name.split("-")[0].trim();
+            }
+            if (prefix === "") prefix = "Ungrouped";
+            if (!groups.has(prefix)) {
+                groups.set(prefix, []);
+            }
+            groups.get(prefix).push({ ...fileData, originalIndex: fileIndex });
+        });
+    } else {
+        fldUploadedFiles.forEach((fileData, fileIndex) => {
+            const folderName = fileData.folderName || "Ungrouped";
+            if (!groups.has(folderName)) {
+                groups.set(folderName, []);
+            }
+            groups.get(folderName).push({ ...fileData, originalIndex: fileIndex });
+        });
+    }
+    return groups;
+}
+
+// Sort prefixes with Error/Missing folders (< 3 files) always on top!
+function getSortedFldPrefixes(groups, priorityError = true) {
+    const prefixes = Array.from(groups.keys());
+    prefixes.sort((a, b) => {
+        if (priorityError) {
+            const countA = (groups.get(a) || []).length;
+            const countB = (groups.get(b) || []).length;
+            const isMissingA = countA < 3 ? 1 : 0;
+            const isMissingB = countB < 3 ? 1 : 0;
+            if (isMissingA !== isMissingB) {
+                return isMissingB - isMissingA; // Missing folders (1) come before complete folders (0)
+            }
+        }
+        return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+    });
+    return prefixes;
+}
+
 function recalculateFldGroupsAndPreview() {
     const fldEmptyState = document.getElementById('fld-empty-state');
     const fldTableContainer = document.getElementById('fld-table-container');
     const fldPreviewTbody = document.getElementById('fld-preview-tbody');
     const fldFileCount = document.getElementById('fld-file-count');
+    const fldMissingBadge = document.getElementById('fld-missing-badge');
+    const fldHeaderActions = document.getElementById('fld-header-actions');
     const btnFldRun = document.getElementById('btn-fld-run');
-    
+
     if (fldUploadedFiles.length === 0) {
         if (fldEmptyState) fldEmptyState.classList.remove('hidden');
         if (fldTableContainer) fldTableContainer.classList.add('hidden');
+        if (fldHeaderActions) fldHeaderActions.classList.add('hidden');
+        if (fldMissingBadge) fldMissingBadge.classList.add('hidden');
         if (fldFileCount) fldFileCount.textContent = '0 files loaded';
         if (btnFldRun) btnFldRun.classList.add('hidden');
         return;
     }
-    
-    if (fldFileCount) {
-        fldFileCount.textContent = `${fldUploadedFiles.length} files loaded`;
-    }
-    
-    const groups = new Map();
-    
-    if (fldMode === 'files') {
-        fldUploadedFiles.forEach(fileData => {
-            const name = fileData.name;
-            if (name.includes("-")) {
-                const prefix = name.split("-")[0].trim();
-                if (prefix !== "") {
-                    if (!groups.has(prefix)) {
-                        groups.set(prefix, []);
-                    }
-                    groups.get(prefix).push(fileData);
-                }
-            }
-        });
-    } else {
-        fldUploadedFiles.forEach(fileData => {
-            const folderName = fileData.folderName;
-            if (folderName) {
-                if (!groups.has(folderName)) {
-                    groups.set(folderName, []);
-                }
-                groups.get(folderName).push(fileData);
-            }
-        });
-    }
-    
-    let html = "";
-    let index = 1;
-    const sortedPrefixes = Array.from(groups.keys()).sort();
-    
+
+    const groups = getFldPrefixGroups();
+    const sortedPrefixes = getSortedFldPrefixes(groups, true); // Error folders always on top
+
+    let missingFoldersCount = 0;
     sortedPrefixes.forEach(prefix => {
         const filesInGroup = groups.get(prefix);
-        const count = filesInGroup.length;
-        const missingCount = count < 3 ? (3 - count) : 0;
-        
-        let statusBadge = "";
-        if (count >= 3) {
-            statusBadge = `<span class="badge success" style="background: rgba(16, 185, 129, 0.15); color: #10b981; padding: 2px 8px; border-radius: 4px; font-weight: 500; font-size: 0.7rem;">3+ Files (Complete)</span>`;
-        } else {
-            statusBadge = `<span class="badge danger" style="background: rgba(239, 68, 68, 0.15); color: #ef4444; padding: 2px 8px; border-radius: 4px; font-weight: 500; font-size: 0.7rem;">${count} Files (${missingCount} Missing)</span>`;
+        if (filesInGroup.length < 3) {
+            missingFoldersCount++;
         }
-        
-        const filesStr = filesInGroup.map(f => f.name).join(", ");
-        
-        html += `
-            <tr>
-                <td>${index++}</td>
-                <td style="font-weight: 600;">${prefix}</td>
-                <td>${count}</td>
-                <td>${statusBadge}</td>
-                <td style="max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${filesStr}">${filesStr}</td>
-            </tr>
-        `;
     });
-    
-    if (fldPreviewTbody) {
-        fldPreviewTbody.innerHTML = html;
+
+    if (fldFileCount) {
+        fldFileCount.textContent = `${fldUploadedFiles.length} files (${sortedPrefixes.length} folders)`;
     }
-    
+
+    if (fldMissingBadge) {
+        if (missingFoldersCount > 0) {
+            fldMissingBadge.textContent = `⚠️ ${missingFoldersCount} Missing / Error`;
+            fldMissingBadge.classList.remove('hidden');
+        } else {
+            fldMissingBadge.textContent = `✅ All Folders Complete`;
+            fldMissingBadge.style.background = "rgba(16, 185, 129, 0.12)";
+            fldMissingBadge.style.color = "#10b981";
+            fldMissingBadge.style.borderColor = "rgba(16, 185, 129, 0.25)";
+            fldMissingBadge.classList.remove('hidden');
+        }
+    }
+
     if (fldEmptyState) fldEmptyState.classList.add('hidden');
     if (fldTableContainer) fldTableContainer.classList.remove('hidden');
+    if (fldHeaderActions) fldHeaderActions.classList.remove('hidden');
     if (btnFldRun) btnFldRun.classList.remove('hidden');
+
+    renderFldAccordionTable(fldPreviewTbody, sortedPrefixes, groups, false);
+
+    // Also update full view modal if it is open
+    const fldFullviewModal = document.getElementById('fld-fullview-modal');
+    if (fldFullviewModal && fldFullviewModal.classList.contains('show')) {
+        renderFldFullViewModalRows();
+    }
+
+    saveFolderCreateSessionToStorage();
 }
 
+// Render Folder Accordion rows and dropdown sub-tables
+function renderFldAccordionTable(tbodyElement, sortedPrefixes, groups, isFullView, searchQuery = "", filterMode = "all") {
+    if (!tbodyElement) return;
+    tbodyElement.innerHTML = "";
+
+    let displayedIndex = 1;
+
+    sortedPrefixes.forEach(prefix => {
+        const filesInGroup = groups.get(prefix) || [];
+        const count = filesInGroup.length;
+        const isComplete = count >= 3;
+        const missingCount = isComplete ? 0 : (3 - count);
+
+        // Apply status filter
+        if (filterMode === 'complete' && !isComplete) return;
+        if (filterMode === 'missing' && isComplete) return;
+
+        // Apply search query
+        if (searchQuery) {
+            const matchesPrefix = prefix.toLowerCase().includes(searchQuery);
+            const matchesFile = filesInGroup.some(f => f.name.toLowerCase().includes(searchQuery));
+            if (!matchesPrefix && !matchesFile) return;
+        }
+
+        const isExpanded = fldExpandedFolders.has(prefix);
+        const filesPreviewStr = filesInGroup.map(f => f.name).join(", ");
+
+        let statusBadge = isComplete
+            ? `<span class="badge success" style="background: rgba(16, 185, 129, 0.15); color: #10b981; padding: 3px 8px; border-radius: 6px; font-weight: 700; font-size: 0.72rem; display: inline-flex; align-items: center; gap: 4px;">
+                <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none"><polyline points="20 6 9 17 4 12"></polyline></svg> 3+ Files (Complete)
+               </span>`
+            : `<span class="badge danger" style="background: rgba(239, 68, 68, 0.15); color: #ef4444; padding: 3px 8px; border-radius: 6px; font-weight: 700; font-size: 0.72rem; display: inline-flex; align-items: center; gap: 4px;">
+                <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg> ${count} Files (${missingCount} Missing)
+               </span>`;
+
+        // Main Folder Row
+        const trFolder = document.createElement('tr');
+        trFolder.className = `fld-accordion-header row-color-${(displayedIndex - 1) % 7}`;
+        if (!isComplete) {
+            trFolder.style.borderLeft = "4px solid #ef4444";
+        } else {
+            trFolder.style.borderLeft = "4px solid #10b981";
+        }
+
+        trFolder.innerHTML = `
+            <td style="text-align: center; width: 35px;">
+                <span class="fld-accordion-icon ${isExpanded ? 'expanded' : ''}" style="color: var(--primary); font-weight: 700; font-size: 0.8rem; cursor: pointer;">
+                    ▶
+                </span>
+            </td>
+            <td><strong>${displayedIndex++}</strong></td>
+            <td>
+                <span style="font-family: monospace; font-weight: 700; color: var(--text-primary); font-size: 0.84rem; display: inline-flex; align-items: center; gap: 6px;">
+                    📁 ${prefix}
+                </span>
+            </td>
+            <td><span class="badge ${isComplete ? 'badge-od' : 'badge-danger'}" style="font-weight: 700;">${count} files</span></td>
+            <td>${statusBadge}</td>
+            <td style="max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.74rem; color: var(--text-secondary);" title="${filesPreviewStr}">
+                ${filesPreviewStr || '<em style="color:var(--text-muted);">Empty folder</em>'}
+            </td>
+            <td style="text-align: center;">
+                <div style="display: inline-flex; gap: 4px;" onclick="event.stopPropagation();">
+                    <button class="btn-action btn-add-file-to-folder" data-prefix="${prefix}" title="Add / Upload File directly into folder ${prefix}" style="width: 24px; height: 24px; border-radius: 6px; border: none; background: rgba(16, 185, 129, 0.1); color: #10b981; cursor: pointer;">
+                        <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                    </button>
+                    <button class="btn-action btn-del-folder" data-prefix="${prefix}" title="Delete this entire folder group" style="width: 24px; height: 24px; border-radius: 6px; border: none; background: rgba(220, 38, 38, 0.08); color: var(--color-danger); cursor: pointer;">
+                        <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2" fill="none"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                    </button>
+                </div>
+            </td>
+        `;
+
+        // Toggle accordion on row click
+        trFolder.addEventListener('click', (e) => {
+            if (e.target.closest('.btn-action') || e.target.closest('button')) return;
+            if (fldExpandedFolders.has(prefix)) {
+                fldExpandedFolders.delete(prefix);
+            } else {
+                fldExpandedFolders.add(prefix);
+            }
+            if (isFullView) {
+                renderFldFullViewModalRows();
+            } else {
+                recalculateFldGroupsAndPreview();
+            }
+        });
+
+        // Add File button on folder header
+        const btnAddFile = trFolder.querySelector('.btn-add-file-to-folder');
+        if (btnAddFile) {
+            btnAddFile.addEventListener('click', (e) => {
+                e.stopPropagation();
+                addManualFileToFolder(prefix);
+            });
+        }
+
+        // Delete Folder button on folder header
+        const btnDelFolder = trFolder.querySelector('.btn-del-folder');
+        if (btnDelFolder) {
+            btnDelFolder.addEventListener('click', (e) => {
+                e.stopPropagation();
+                showDeleteConfirmation({
+                    title: `Delete Folder "${prefix}"?`,
+                    message: `Are you sure you want to delete folder "${prefix}" and all its ${count} file(s)?`,
+                    onConfirm: () => removeFldFolder(prefix)
+                });
+            });
+        }
+
+        tbodyElement.appendChild(trFolder);
+
+        // Expanded Sub-table Row
+        if (isExpanded) {
+            const trSub = document.createElement('tr');
+            trSub.className = 'fld-expanded-row';
+            const tdSub = document.createElement('td');
+            tdSub.colSpan = 7;
+            tdSub.style.padding = "0.25rem 0.5rem 0.6rem 0.5rem";
+            tdSub.style.background = "rgba(0,0,0,0.02)";
+
+            const subContainer = document.createElement('div');
+            subContainer.className = 'fld-accordion-subtable';
+
+            let subTableHtml = `
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem; padding: 0.2rem 0.4rem;">
+                    <span style="font-size: 0.74rem; font-weight: 700; color: var(--primary);">📂 Files inside folder "${prefix}" (${count}/3 ${isComplete ? 'Complete ✅' : 'Missing ⚠️'}):</span>
+                    <button class="btn btn-secondary btn-add-sub-file" data-prefix="${prefix}" style="padding: 0.22rem 0.6rem; font-size: 0.7rem; color: #10b981; font-weight: 700; border-color: rgba(16, 185, 129, 0.3); display: inline-flex; align-items: center; gap: 4px;">
+                        <svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" stroke-width="2.5" fill="none"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                        Add / Upload File
+                    </button>
+                </div>
+                <table class="preview-table" style="font-size: 0.72rem; width: 100%; background: #ffffff; border-radius: 6px; border-collapse: separate; border-spacing: 0;">
+                    <thead>
+                        <tr style="background: #f1f5f9;">
+                            <th style="width: 35px; text-align: center;">#</th>
+                            <th>File Name</th>
+                            <th style="width: 90px;">Size</th>
+                            <th style="width: 220px; text-align: center;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            // 1. Render existing files
+            filesInGroup.forEach((fileData, fileIdx) => {
+                const fileSizeFormatted = fileData.fileObj ? formatBytes(fileData.fileObj.size) : '';
+                subTableHtml += `
+                    <tr data-file-idx="${fileData.originalIndex}">
+                        <td style="text-align: center; font-weight: 600;">${fileIdx + 1}</td>
+                        <td>
+                            <span style="font-family: monospace; font-weight: 600; color: var(--text-primary);">
+                                📄 ${fileData.name}
+                            </span>
+                        </td>
+                        <td style="color: var(--text-secondary); font-weight: 500;">${fileSizeFormatted}</td>
+                        <td style="text-align: center;">
+                            <div style="display: inline-flex; align-items: center; justify-content: center; gap: 6px;">
+                                <button class="btn-sub-copy btn-copy-fld-file" data-orig-idx="${fileData.originalIndex}" data-prefix="${prefix}" title="Copy/Paste this file into other folders" style="padding: 3px 8px; font-size: 0.72rem; font-weight: 700; border-radius: 6px; border: 1px solid rgba(124, 58, 237, 0.3); background: rgba(124, 58, 237, 0.08); color: var(--primary); cursor: pointer; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; line-height: 1.2;">
+                                    <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.2" fill="none"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                                    Copy/Paste
+                                </button>
+                                <button class="btn-sub-icon btn-edit-fld-file" data-orig-idx="${fileData.originalIndex}" title="Edit / Rename file" style="width: 26px; height: 26px; border-radius: 6px; border: 1px solid rgba(59, 130, 246, 0.25); background: rgba(59, 130, 246, 0.08); color: #2563eb; display: inline-flex; align-items: center; justify-content: center; cursor: pointer;">
+                                    <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" stroke-width="2" fill="none"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                                </button>
+                                <button class="btn-sub-icon btn-inspect-fld-file" data-orig-idx="${fileData.originalIndex}" title="Inspect first 50 rows" style="width: 26px; height: 26px; border-radius: 6px; border: 1px solid rgba(16, 185, 129, 0.25); background: rgba(16, 185, 129, 0.08); color: #059669; display: inline-flex; align-items: center; justify-content: center; cursor: pointer;">
+                                    <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" stroke-width="2" fill="none"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                                </button>
+                                <button class="btn-sub-icon btn-del-fld-file" data-orig-idx="${fileData.originalIndex}" data-filename="${fileData.name}" title="Delete file" style="width: 26px; height: 26px; border-radius: 6px; border: 1px solid rgba(220, 38, 38, 0.25); background: rgba(220, 38, 38, 0.08); color: #dc2626; display: inline-flex; align-items: center; justify-content: center; cursor: pointer;">
+                                    <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" stroke-width="2" fill="none"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            });
+
+            // 2. Render missing slots if folder has < 3 files
+            if (count < 3) {
+                for (let slotIdx = count + 1; slotIdx <= 3; slotIdx++) {
+                    subTableHtml += `
+                        <tr class="fld-missing-slot-row" data-prefix="${prefix}" style="background: rgba(239, 68, 68, 0.04); border-left: 3px dashed #ef4444; cursor: pointer;" title="Click to upload missing file #${slotIdx} directly into folder ${prefix}">
+                            <td style="text-align: center; color: #dc2626; font-weight: 700;">${slotIdx}</td>
+                            <td>
+                                <span style="font-family: monospace; font-weight: 700; color: #dc2626; display: inline-flex; align-items: center; gap: 6px; font-size: 0.74rem;">
+                                    <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2.5" fill="none"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                                    ⚠️ Missing File #${slotIdx} (Click to upload / select)
+                                </span>
+                            </td>
+                            <td style="color: #ef4444; font-size: 0.72rem; font-style: italic; font-weight: 600;">Missing</td>
+                            <td style="text-align: center;">
+                                <button class="btn btn-upload-missing-slot" data-prefix="${prefix}" style="padding: 3px 12px; font-size: 0.72rem; font-weight: 700; background: #dc2626; color: #ffffff; border: none; border-radius: 6px; display: inline-flex; align-items: center; gap: 5px; cursor: pointer; box-shadow: 0 2px 4px rgba(220, 38, 38, 0.25);">
+                                    <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                                    ➕ Upload File
+                                </button>
+                            </td>
+                        </tr>
+                    `;
+                }
+            }
+
+            subTableHtml += `</tbody></table>`;
+            subContainer.innerHTML = subTableHtml;
+
+            // Attach event listeners for sub-table items
+            subContainer.querySelectorAll('.btn-copy-fld-file').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const origIdx = parseInt(btn.getAttribute('data-orig-idx'), 10);
+                    const fileData = fldUploadedFiles[origIdx];
+                    if (fileData) {
+                        openCopyFileToFoldersModal(fileData, prefix);
+                    }
+                });
+            });
+
+            subContainer.querySelectorAll('.btn-edit-fld-file').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const origIdx = parseInt(btn.getAttribute('data-orig-idx'), 10);
+                    const fileData = fldUploadedFiles[origIdx];
+                    if (fileData) {
+                        openEditFldFileNameModal(fileData);
+                    }
+                });
+            });
+
+            subContainer.querySelectorAll('.btn-inspect-fld-file').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const origIdx = parseInt(btn.getAttribute('data-orig-idx'), 10);
+                    const fileData = fldUploadedFiles[origIdx];
+                    if (fileData) {
+                        inspectFldFile(fileData);
+                    }
+                });
+            });
+
+            subContainer.querySelectorAll('.btn-del-fld-file').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const origIdx = parseInt(btn.getAttribute('data-orig-idx'), 10);
+                    const fileName = btn.getAttribute('data-filename');
+                    showDeleteConfirmation({
+                        title: `Delete File?`,
+                        message: `Are you sure you want to remove "${fileName}" from folder "${prefix}"?`,
+                        onConfirm: () => removeFldFile(origIdx)
+                    });
+                });
+            });
+
+            const btnAddSubFile = subContainer.querySelector('.btn-add-sub-file');
+            if (btnAddSubFile) {
+                btnAddSubFile.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    addManualFileToFolder(prefix);
+                });
+            }
+
+            // Click listener on missing slot rows and upload buttons
+            subContainer.querySelectorAll('.fld-missing-slot-row, .btn-upload-missing-slot').forEach(el => {
+                el.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const targetPrefix = el.getAttribute('data-prefix');
+                    if (targetPrefix) {
+                        addManualFileToFolder(targetPrefix);
+                    }
+                });
+            });
+
+            tdSub.appendChild(subContainer);
+            trSub.appendChild(tdSub);
+            tbodyElement.appendChild(trSub);
+        }
+    });
+}
+
+// Remove an individual file from folder list
+function removeFldFile(index) {
+    if (index >= 0 && index < fldUploadedFiles.length) {
+        const removed = fldUploadedFiles.splice(index, 1)[0];
+        updateFldSelectedUI();
+        recalculateFldGroupsAndPreview();
+        showToast(`Removed "${removed.name}".`, "info");
+    }
+}
+
+// Remove an entire folder group
+function removeFldFolder(prefix) {
+    const prevCount = fldUploadedFiles.length;
+    if (fldMode === 'files') {
+        fldUploadedFiles = fldUploadedFiles.filter(f => {
+            const name = f.name;
+            const p = name.includes("-") ? name.split("-")[0].trim() : "Ungrouped";
+            return p !== prefix;
+        });
+    } else {
+        fldUploadedFiles = fldUploadedFiles.filter(f => (f.folderName || "Ungrouped") !== prefix);
+    }
+    fldExpandedFolders.delete(prefix);
+    const removedCount = prevCount - fldUploadedFiles.length;
+    updateFldSelectedUI();
+    recalculateFldGroupsAndPreview();
+    showToast(`Deleted folder "${prefix}" (${removedCount} file(s)).`, "info");
+}
+
+// Manual file upload into a specific folder
+function addManualFileToFolder(folderPrefix) {
+    fldActiveManualTargetFolder = folderPrefix;
+    const manualInput = document.getElementById('fld-manual-file-input');
+    if (manualInput) {
+        manualInput.value = '';
+        manualInput.click();
+    }
+}
+
+// Inspect a folder file
+async function inspectFldFile(fileData) {
+    if (!fileData || !fileData.fileObj) return;
+    try {
+        const aoa = await readExcelAsAOA(fileData.fileObj);
+        openRenFileInspector({
+            name: fileData.name,
+            parsedAOA: aoa.slice(0, 50),
+            fileObj: fileData.fileObj
+        });
+    } catch (err) {
+        console.error(err);
+        showToast("Failed to preview file: " + err.message, "error");
+    }
+}
+
+// Setup Folder Create event listeners
 function setupFolderCreate() {
     const fldDropzone = document.getElementById('fld-dropzone');
     const fldFileInput = document.getElementById('fld-file-input');
     const fldFolderInput = document.getElementById('fld-folder-input');
+    const fldManualInput = document.getElementById('fld-manual-file-input');
     const btnFldSelectFiles = document.getElementById('btn-fld-select-files');
     const btnFldRun = document.getElementById('btn-fld-run');
     const btnFldClear = document.getElementById('btn-fld-clear');
-    
+
     const fldModeFilesBtn = document.getElementById('fld-mode-files-btn');
     const fldModeFoldersBtn = document.getElementById('fld-mode-folders-btn');
-    
-    if (!fldDropzone || !fldFileInput || !btnFldRun) return;
-    
-    // Switch buttons setup
+
+    const btnFldFullview = document.getElementById('btn-fld-fullview');
+    const btnFldDownloadErrorExcel = document.getElementById('btn-fld-download-error-excel');
+    const btnFldMoveToProcessor = document.getElementById('btn-fld-move-to-processor');
+    const btnFldDownloadZip = document.getElementById('btn-fld-download-zip');
+
     if (fldModeFilesBtn) {
         fldModeFilesBtn.addEventListener('click', () => switchFldMode('files'));
     }
     if (fldModeFoldersBtn) {
         fldModeFoldersBtn.addEventListener('click', () => switchFldMode('folders'));
     }
-    
-    // Clear button setup
+
     if (btnFldClear) {
         btnFldClear.addEventListener('click', () => {
             fldUploadedFiles = [];
+            fldExpandedFolders.clear();
             if (fldFileInput) fldFileInput.value = '';
             if (fldFolderInput) fldFolderInput.value = '';
             resetFolderCreateButtonState();
             updateFldSelectedUI();
             recalculateFldGroupsAndPreview();
+            clearFolderCreateSessionStorage();
             showToast("Cleared selected files list", "success");
         });
     }
-    
-    // Select Files/Folder click trigger
+
     if (btnFldSelectFiles) {
         btnFldSelectFiles.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -4845,56 +7378,581 @@ function setupFolderCreate() {
             }
         });
     }
-    
-    fldDropzone.addEventListener('click', (e) => {
-        if (e.target.closest('#btn-fld-select-files')) return;
-        if (fldMode === 'files') {
-            fldFileInput.click();
-        } else {
-            if (fldFolderInput) fldFolderInput.click();
-        }
-    });
-    
-    fldFileInput.addEventListener('change', (e) => {
-        handleFldFileSelection(e.target.files);
-    });
-    
+
+    if (fldDropzone) {
+        fldDropzone.addEventListener('click', (e) => {
+            if (e.target.closest('#btn-fld-select-files')) return;
+            if (fldMode === 'files') {
+                fldFileInput.click();
+            } else {
+                if (fldFolderInput) fldFolderInput.click();
+            }
+        });
+
+        fldDropzone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            fldDropzone.classList.add('dragover');
+        });
+
+        fldDropzone.addEventListener('dragleave', () => {
+            fldDropzone.classList.remove('dragover');
+        });
+
+        fldDropzone.addEventListener('drop', async (e) => {
+            e.preventDefault();
+            fldDropzone.classList.remove('dragover');
+            let files = [];
+            if (fldMode === 'files') {
+                if (e.dataTransfer.files.length > 0) {
+                    files = Array.from(e.dataTransfer.files);
+                }
+            } else {
+                files = await getFilesFromDataTransfer(e.dataTransfer);
+            }
+            if (files.length > 0) {
+                handleFldFileSelection(files);
+            }
+        });
+    }
+
+    if (fldFileInput) {
+        fldFileInput.addEventListener('change', (e) => {
+            handleFldFileSelection(e.target.files);
+        });
+    }
+
     if (fldFolderInput) {
         fldFolderInput.addEventListener('change', (e) => {
             handleFldFileSelection(e.target.files);
         });
     }
-    
-    // Drag & Drop
-    fldDropzone.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        fldDropzone.classList.add('dragover');
-    });
-    
-    fldDropzone.addEventListener('dragleave', () => {
-        fldDropzone.classList.remove('dragover');
-    });
-    
-    fldDropzone.addEventListener('drop', async (e) => {
-        e.preventDefault();
-        fldDropzone.classList.remove('dragover');
-        
-        let files = [];
-        if (fldMode === 'files') {
-            if (e.dataTransfer.files.length > 0) {
-                files = Array.from(e.dataTransfer.files);
+
+    // Manual file input for adding directly into a specific folder
+    if (fldManualInput) {
+        fldManualInput.addEventListener('change', (e) => {
+            if (e.target.files && e.target.files.length > 0 && fldActiveManualTargetFolder) {
+                const targetPrefix = fldActiveManualTargetFolder;
+                Array.from(e.target.files).forEach(file => {
+                    const ext = file.name.split('.').pop().toLowerCase();
+                    let finalName = file.name;
+                    if (!finalName.startsWith(targetPrefix + "-")) {
+                        finalName = `${targetPrefix}-${file.name}`;
+                    }
+                    fldUploadedFiles.push({
+                        name: finalName,
+                        ext: ext,
+                        folderName: targetPrefix,
+                        relativePath: `${targetPrefix}/${finalName}`,
+                        fileObj: file
+                    });
+                });
+                fldExpandedFolders.add(targetPrefix);
+                updateFldSelectedUI();
+                recalculateFldGroupsAndPreview();
+                showToast(`Added file(s) into folder "${targetPrefix}".`, "success");
+                fldActiveManualTargetFolder = null;
             }
-        } else {
-            files = await getFilesFromDataTransfer(e.dataTransfer);
+        });
+    }
+
+    // Header buttons
+    if (btnFldFullview) btnFldFullview.addEventListener('click', openFldFullViewModal);
+    if (btnFldDownloadErrorExcel) btnFldDownloadErrorExcel.addEventListener('click', downloadFldErrorExcel);
+    if (btnFldMoveToProcessor) btnFldMoveToProcessor.addEventListener('click', moveFolderCreateToProcessor);
+    if (btnFldDownloadZip) btnFldDownloadZip.addEventListener('click', runFolderCreateProcess);
+    if (btnFldRun) btnFldRun.addEventListener('click', runFolderCreateProcess);
+
+    // Setup Copy Modal controls
+    setupCopyFileToFoldersModal();
+
+    // Setup Edit Modal controls
+    setupEditFldFileModal();
+
+    // Setup Full View Modal controls
+    setupFldFullViewModal();
+
+    // Restore 1-hour session from IndexedDB if available
+    loadFolderCreateSessionFromStorage();
+}
+
+// ----------------------------------------------------
+// COPY / PASTE FILE TO TARGET FOLDERS MODAL
+// ----------------------------------------------------
+
+function setupCopyFileToFoldersModal() {
+    const modal = document.getElementById('copy-file-to-folders-modal');
+    const btnClose = document.getElementById('btn-close-copy-modal');
+    const btnCancel = document.getElementById('btn-cancel-copy-modal');
+    const btnConfirm = document.getElementById('btn-confirm-copy-paste');
+    const searchInput = document.getElementById('copy-folders-search');
+
+    const btnSelectMissing = document.getElementById('btn-copy-select-missing');
+    const btnSelectAll = document.getElementById('btn-copy-select-all');
+    const btnDeselectAll = document.getElementById('btn-copy-deselect-all');
+
+    if (btnClose) btnClose.addEventListener('click', closeCopyFileToFoldersModal);
+    if (btnCancel) btnCancel.addEventListener('click', closeCopyFileToFoldersModal);
+    if (btnConfirm) btnConfirm.addEventListener('click', confirmCopyPasteFiles);
+
+    if (searchInput) {
+        searchInput.addEventListener('input', renderCopyTargetFoldersList);
+    }
+
+    if (btnSelectMissing) {
+        btnSelectMissing.addEventListener('click', () => {
+            const list = document.getElementById('copy-target-folders-list');
+            if (list) {
+                list.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+                    const isMissing = cb.getAttribute('data-is-missing') === 'true';
+                    cb.checked = isMissing;
+                });
+            }
+        });
+    }
+
+    if (btnSelectAll) {
+        btnSelectAll.addEventListener('click', () => {
+            const list = document.getElementById('copy-target-folders-list');
+            if (list) {
+                list.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+                    cb.checked = true;
+                });
+            }
+        });
+    }
+
+    if (btnDeselectAll) {
+        btnDeselectAll.addEventListener('click', () => {
+            const list = document.getElementById('copy-target-folders-list');
+            if (list) {
+                list.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+                    cb.checked = false;
+                });
+            }
+        });
+    }
+}
+
+function openCopyFileToFoldersModal(sourceFile, sourcePrefix) {
+    fldActiveCopyFile = {
+        fileObj: sourceFile.fileObj,
+        name: sourceFile.name,
+        folderPrefix: sourcePrefix
+    };
+
+    const modal = document.getElementById('copy-file-to-folders-modal');
+    const display = document.getElementById('copy-source-file-display');
+    const searchInput = document.getElementById('copy-folders-search');
+
+    if (!modal) return;
+    if (display) {
+        display.textContent = `📄 ${sourceFile.name} (from Folder "${sourcePrefix}")`;
+    }
+    if (searchInput) searchInput.value = '';
+
+    renderCopyTargetFoldersList();
+    modal.classList.add('show');
+    modal.classList.remove('hidden');
+}
+
+function closeCopyFileToFoldersModal() {
+    const modal = document.getElementById('copy-file-to-folders-modal');
+    if (modal) {
+        modal.classList.remove('show');
+        modal.classList.add('hidden');
+    }
+    fldActiveCopyFile = null;
+}
+
+function renderCopyTargetFoldersList() {
+    const container = document.getElementById('copy-target-folders-list');
+    const searchInput = document.getElementById('copy-folders-search');
+    const query = searchInput ? searchInput.value.trim().toLowerCase() : '';
+
+    if (!container || !fldActiveCopyFile) return;
+    container.innerHTML = '';
+
+    const groups = getFldPrefixGroups();
+    const sortedPrefixes = getSortedFldPrefixes(groups, true);
+
+    const currentPrefix = fldActiveCopyFile.folderPrefix;
+
+    // Filter target folders: ONLY missing / error folders (count < 3) and exclude source folder
+    let targetPrefixes = sortedPrefixes.filter(p => {
+        if (p === currentPrefix) return false;
+        const filesInGroup = groups.get(p) || [];
+        return filesInGroup.length < 3; // ONLY missing / error folders!
+    });
+
+    if (query) {
+        targetPrefixes = targetPrefixes.filter(p => p.toLowerCase().includes(query));
+    }
+
+    if (targetPrefixes.length === 0) {
+        container.innerHTML = `<div style="text-align: center; color: #10b981; padding: 1.2rem; font-size: 0.78rem; font-weight: 600;">
+            <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2.2" fill="none" style="display: block; margin: 0 auto 0.35rem auto;"><polyline points="20 6 9 17 4 12"></polyline></svg>
+            No missing folders found! All other folders are already complete (3+ files).
+        </div>`;
+        return;
+    }
+
+    targetPrefixes.forEach(prefix => {
+        const filesInGroup = groups.get(prefix) || [];
+        const count = filesInGroup.length;
+        const missingCount = 3 - count;
+
+        const row = document.createElement('label');
+        row.style.display = 'flex';
+        row.style.justifyContent = 'space-between';
+        row.style.alignItems = 'center';
+        row.style.padding = '0.4rem 0.6rem';
+        row.style.borderRadius = '6px';
+        row.style.background = 'rgba(239, 68, 68, 0.04)';
+        row.style.border = '1px solid rgba(239, 68, 68, 0.2)';
+        row.style.cursor = 'pointer';
+
+        row.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <input type="checkbox" value="${prefix}" data-is-missing="true" style="accent-color: var(--primary); cursor: pointer; width: 15px; height: 15px;">
+                <span style="font-family: monospace; font-weight: 700; font-size: 0.8rem; color: var(--text-primary);">📁 ${prefix}</span>
+            </div>
+            <div>
+                <span class="badge danger" style="font-size: 0.68rem; background: rgba(239, 68, 68, 0.15); color: #ef4444; font-weight: 700; padding: 2px 7px; border-radius: 4px;">
+                    ⚠️ ${count} files (${missingCount} missing)
+                </span>
+            </div>
+        `;
+        container.appendChild(row);
+    });
+}
+
+function confirmCopyPasteFiles() {
+    if (!fldActiveCopyFile) return;
+
+    const list = document.getElementById('copy-target-folders-list');
+    const autoPrefixCheckbox = document.getElementById('copy-auto-prefix-checkbox');
+    const autoPrefix = autoPrefixCheckbox ? autoPrefixCheckbox.checked : true;
+
+    if (!list) return;
+
+    const selectedPrefixes = [];
+    list.querySelectorAll('input[type="checkbox"]:checked').forEach(cb => {
+        selectedPrefixes.push(cb.value);
+    });
+
+    if (selectedPrefixes.length === 0) {
+        showToast("Please select at least one target folder.", "warning");
+        return;
+    }
+
+    const sourceName = fldActiveCopyFile.name;
+    const sourcePrefix = fldActiveCopyFile.folderPrefix;
+    const sourceBlob = fldActiveCopyFile.fileObj;
+    const ext = sourceName.split('.').pop().toLowerCase();
+
+    let pastedCount = 0;
+
+    selectedPrefixes.forEach(targetPrefix => {
+        let newName = sourceName;
+        if (autoPrefix) {
+            if (sourceName.startsWith(sourcePrefix + "-")) {
+                newName = `${targetPrefix}-${sourceName.substring(sourcePrefix.length + 1)}`;
+            } else if (sourceName.includes("-")) {
+                const parts = sourceName.split("-");
+                parts[0] = targetPrefix;
+                newName = parts.join("-");
+            } else {
+                newName = `${targetPrefix}-${sourceName}`;
+            }
         }
-        
-        if (files.length > 0) {
-            handleFldFileSelection(files);
+
+        // Avoid exact duplicate
+        const exists = fldUploadedFiles.some(f => f.name === newName && (f.folderName === targetPrefix || f.name.startsWith(targetPrefix + "-")));
+        if (!exists) {
+            fldUploadedFiles.push({
+                name: newName,
+                ext: ext,
+                folderName: targetPrefix,
+                relativePath: `${targetPrefix}/${newName}`,
+                fileObj: sourceBlob
+            });
+            fldExpandedFolders.add(targetPrefix);
+            pastedCount++;
         }
     });
-    
-    // Run process
-    btnFldRun.addEventListener('click', runFolderCreateProcess);
+
+    closeCopyFileToFoldersModal();
+    updateFldSelectedUI();
+    recalculateFldGroupsAndPreview();
+
+    showToast(`Pasted file into ${pastedCount} folder(s) successfully!`, "success");
+}
+
+// ----------------------------------------------------
+// EDIT FOLDER FILE NAME MODAL
+// ----------------------------------------------------
+
+function setupEditFldFileModal() {
+    const modal = document.getElementById('edit-fld-file-modal');
+    const btnClose = document.getElementById('btn-close-edit-fld-file');
+    const btnCancel = document.getElementById('btn-cancel-edit-fld-file');
+    const btnSave = document.getElementById('btn-save-edit-fld-file');
+
+    if (btnClose) btnClose.addEventListener('click', closeEditFldFileModal);
+    if (btnCancel) btnCancel.addEventListener('click', closeEditFldFileModal);
+    if (btnSave) btnSave.addEventListener('click', saveEditFldFileName);
+}
+
+function openEditFldFileNameModal(fileData) {
+    fldActiveEditFile = fileData;
+    const modal = document.getElementById('edit-fld-file-modal');
+    const currentDisplay = document.getElementById('edit-fld-file-current');
+    const input = document.getElementById('edit-fld-file-input');
+
+    if (!modal) return;
+    if (currentDisplay) currentDisplay.textContent = fileData.name;
+    if (input) input.value = fileData.name;
+
+    modal.classList.add('show');
+    modal.classList.remove('hidden');
+    if (input) input.focus();
+}
+
+function closeEditFldFileModal() {
+    const modal = document.getElementById('edit-fld-file-modal');
+    if (modal) {
+        modal.classList.remove('show');
+        modal.classList.add('hidden');
+    }
+    fldActiveEditFile = null;
+}
+
+function saveEditFldFileName() {
+    if (!fldActiveEditFile) return;
+    const input = document.getElementById('edit-fld-file-input');
+    const newName = input ? input.value.trim() : '';
+
+    if (!newName) {
+        showToast("Please enter a valid file name.", "warning");
+        return;
+    }
+
+    fldActiveEditFile.name = newName;
+    if (fldActiveEditFile.folderName) {
+        fldActiveEditFile.relativePath = `${fldActiveEditFile.folderName}/${newName}`;
+    }
+
+    closeEditFldFileModal();
+    updateFldSelectedUI();
+    recalculateFldGroupsAndPreview();
+    showToast(`File name updated to "${newName}".`, "success");
+}
+
+// ----------------------------------------------------
+// FULL VIEW MODAL FOR FOLDER CREATE
+// ----------------------------------------------------
+
+function setupFldFullViewModal() {
+    const btnClose = document.getElementById('btn-close-fld-fullview');
+    const searchInput = document.getElementById('fld-fullview-search');
+
+    if (btnClose) btnClose.addEventListener('click', closeFldFullViewModal);
+    if (searchInput) searchInput.addEventListener('input', renderFldFullViewModalRows);
+
+    document.querySelectorAll('.fld-filter-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.fld-filter-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            fldFullViewFilter = btn.getAttribute('data-filter') || 'all';
+            renderFldFullViewModalRows();
+        });
+    });
+}
+
+function openFldFullViewModal() {
+    const modal = document.getElementById('fld-fullview-modal');
+    const searchInput = document.getElementById('fld-fullview-search');
+
+    if (!modal) return;
+    if (searchInput) searchInput.value = '';
+
+    renderFldFullViewModalRows();
+    modal.classList.add('show');
+    modal.classList.remove('hidden');
+}
+
+function closeFldFullViewModal() {
+    const modal = document.getElementById('fld-fullview-modal');
+    if (modal) {
+        modal.classList.remove('show');
+        modal.classList.add('hidden');
+    }
+}
+
+function renderFldFullViewModalRows() {
+    const tbody = document.getElementById('tbody-fld-fullview-files');
+    const countTag = document.getElementById('fld-fullview-count');
+    const searchInput = document.getElementById('fld-fullview-search');
+    const query = searchInput ? searchInput.value.trim().toLowerCase() : '';
+
+    if (!tbody) return;
+
+    const groups = getFldPrefixGroups();
+    const sortedPrefixes = getSortedFldPrefixes(groups, true); // Missing/Error folders always on top
+
+    if (countTag) {
+        countTag.textContent = `${sortedPrefixes.length} folders loaded`;
+    }
+
+    renderFldAccordionTable(tbody, sortedPrefixes, groups, true, query, fldFullViewFilter);
+}
+
+// ----------------------------------------------------
+// DOWNLOAD ERROR EXCEL REPORT
+// ----------------------------------------------------
+
+function downloadFldErrorExcel() {
+    if (fldUploadedFiles.length === 0) {
+        showToast("No files or folders available to generate report.", "error");
+        return;
+    }
+
+    const groups = getFldPrefixGroups();
+    const sortedPrefixes = getSortedFldPrefixes(groups, true); // Missing/Error folders first
+
+    const reportAOA = [
+        ["MYNTRA FOLDER CREATION & ERROR REPORT"],
+        ["#", "Folder Name (Prefix)", "Current Files Count", "Missing Files Needed", "Status", "Files List"]
+    ];
+
+    let errorCount = 0;
+    sortedPrefixes.forEach((prefix, idx) => {
+        const filesInGroup = groups.get(prefix) || [];
+        const count = filesInGroup.length;
+        const isComplete = count >= 3;
+        const missingCount = isComplete ? 0 : (3 - count);
+        const status = isComplete ? "Complete (3+ Files)" : `ERROR: Missing ${missingCount} File(s)`;
+        const filesStr = filesInGroup.map(f => f.name).join("; ");
+
+        if (!isComplete) errorCount++;
+
+        reportAOA.push([
+            idx + 1,
+            prefix,
+            count,
+            missingCount,
+            status,
+            filesStr
+        ]);
+    });
+
+    const ws = XLSX.utils.aoa_to_sheet(reportAOA);
+    ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 5 } }];
+    ws['!cols'] = [
+        { wch: 6 },
+        { wch: 22 },
+        { wch: 18 },
+        { wch: 20 },
+        { wch: 24 },
+        { wch: 60 }
+    ];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Folder_Error_Report");
+    XLSX.writeFile(wb, `Myntra_Folder_Error_Report_${getDtStamp()}.xlsx`);
+
+    showToast(`Error Report Excel downloaded (${errorCount} error folders found).`, "success");
+}
+
+// ----------------------------------------------------
+// MOVE TO FILE RENAMER & PROCESSOR TAB
+// ----------------------------------------------------
+
+async function moveFolderCreateToProcessor() {
+    if (fldUploadedFiles.length === 0) {
+        showToast("No folder files to move to processor.", "error");
+        return;
+    }
+
+    const fldProgress = document.getElementById('fld-progress');
+    const fldProgressPercent = document.getElementById('fld-progress-percent');
+    const fldProgressText = document.getElementById('fld-progress-text');
+    const fldProgressFill = document.getElementById('fld-progress-fill');
+
+    if (fldProgress) fldProgress.classList.remove('hidden');
+    const updateProgress = (pct, txt) => {
+        if (fldProgressPercent) fldProgressPercent.textContent = `${Math.round(pct)}%`;
+        if (fldProgressFill) fldProgressFill.style.width = `${pct}%`;
+        if (fldProgressText) fldProgressText.textContent = txt;
+    };
+
+    updateProgress(15, "Packaging all folder files for File Renamer & Processor...");
+    await new Promise(r => setTimeout(r, 40));
+
+    try {
+        const groups = getFldPrefixGroups();
+        const sortedPrefixes = Array.from(groups.keys()).filter(p => p && p !== 'Other').sort((a, b) => {
+            const numA = parseInt(a, 10);
+            const numB = parseInt(b, 10);
+            if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+            return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+        });
+        const zip = new JSZip();
+
+        let processed = 0;
+        const total = fldUploadedFiles.length;
+
+        for (const prefix of sortedPrefixes) {
+            const filesInGroup = groups.get(prefix) || [];
+            for (const fileObj of filesInGroup) {
+                processed++;
+                const pct = 15 + Math.round((processed / total) * 75);
+                updateProgress(pct, `Packing: ${fileObj.name}...`);
+                await new Promise(r => setTimeout(r, 5));
+
+                zip.file(`${prefix}/${fileObj.name}`, fileObj.fileObj);
+            }
+        }
+
+        // Also pack any "Other" non-prefix files if present
+        const otherFiles = groups.get('Other') || [];
+        for (const fileObj of otherFiles) {
+            processed++;
+            zip.file(fileObj.name, fileObj.fileObj);
+        }
+
+        updateProgress(95, "Finalizing package...");
+        await new Promise(r => setTimeout(r, 40));
+
+        let dynamicZipName = "myntra_folder_bundle.zip";
+        if (sortedPrefixes.length === 1) {
+            dynamicZipName = `${sortedPrefixes[0]}.zip`;
+        } else if (sortedPrefixes.length > 1) {
+            dynamicZipName = `${sortedPrefixes[0]}-${sortedPrefixes[sortedPrefixes.length - 1]}.zip`;
+        }
+
+        const zipBlob = await zip.generateAsync({ type: "blob" });
+        const zipFile = new File([zipBlob], dynamicZipName, { type: "application/zip" });
+
+        updateProgress(100, "Done!");
+        setTimeout(() => {
+            if (fldProgress) fldProgress.classList.add('hidden');
+        }, 800);
+
+        // Send to processor tab
+        await handleUploadedFiles([zipFile]);
+
+        // Switch to File Renamer & Processor Tab
+        const processorTabBtn = document.getElementById('btn-processor-tab') || document.querySelector('.tab-btn[data-tab="tab-processor"]');
+        if (processorTabBtn) processorTabBtn.click();
+
+        showToast(`Transferred all ${total} files across ${sortedPrefixes.length} folders to File Renamer & Processor!`, "success");
+
+    } catch (err) {
+        console.error(err);
+        if (fldProgress) fldProgress.classList.add('hidden');
+        showToast("Error moving to processor: " + err.message, "error");
+    }
 }
 
 function resetFolderCreateButtonState() {
@@ -4907,7 +7965,7 @@ function resetFolderCreateButtonState() {
             <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 5px;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
             Create Folders & Zip
         `;
-        btnFldRun.style.background = ""; // Restore default style
+        btnFldRun.style.background = "";
         btnFldRun.style.borderColor = "";
         btnFldRun.disabled = false;
     }
@@ -4946,7 +8004,6 @@ async function handleFldFileSelection(files) {
             const file = files[i];
             const ext = file.name.split('.').pop().toLowerCase();
             
-            // Skip system files
             const isSystemFile = file.name.startsWith('.') || file.name.startsWith('~') || file.name === "Thumbs.db";
             if (isSystemFile) continue;
             
@@ -4971,7 +8028,6 @@ async function handleFldFileSelection(files) {
         }
         
         let addedCount = 0;
-        // Add to our list avoiding duplicates
         flatFilesList.forEach(fileData => {
             if (fldMode === 'files') {
                 if (!fldUploadedFiles.some(f => f.name === fileData.name && f.fileObj.size === fileData.blob.size)) {
@@ -5063,32 +8119,7 @@ async function runFolderCreateProcess() {
         updateFldProgress(10, "Grouping files...");
         await new Promise(r => setTimeout(r, 200));
         
-        const groups = new Map();
-        
-        if (fldMode === 'files') {
-            fldUploadedFiles.forEach(fileObj => {
-                const name = fileObj.name;
-                if (name.includes("-")) {
-                    const prefix = name.split("-")[0].trim();
-                    if (prefix !== "") {
-                        if (!groups.has(prefix)) {
-                            groups.set(prefix, []);
-                        }
-                        groups.get(prefix).push(fileObj);
-                    }
-                }
-            });
-        } else {
-            fldUploadedFiles.forEach(fileObj => {
-                const folderName = fileObj.folderName;
-                if (folderName) {
-                    if (!groups.has(folderName)) {
-                        groups.set(folderName, []);
-                    }
-                    groups.get(folderName).push(fileObj);
-                }
-            });
-        }
+        const groups = getFldPrefixGroups();
         
         if (groups.size === 0) {
             showToast("No files could be grouped.", "error");
@@ -5104,90 +8135,27 @@ async function runFolderCreateProcess() {
         updateFldProgress(30, "Creating summary report sheets...");
         await new Promise(r => setTimeout(r, 200));
         
-        // Build Excel Summary (Myntra Group check = 3 files)
         const summaryAOA = [
             ["Folder Creation & Completeness Report"],
             ["Folder Name", "Current File Count", "Missing Files Count", "Status"]
         ];
         
-        const missingList = [];
         sortedPrefixes.forEach(prefix => {
             const filesInGroup = groups.get(prefix);
             const count = filesInGroup.length;
             const missingCount = count < 3 ? (3 - count) : 0;
             const status = count >= 3 ? "Complete" : `Missing ${missingCount} File(s)`;
             summaryAOA.push([prefix, count, missingCount, status]);
-            if (missingCount > 0) {
-                missingList.push({ prefix, count, missingCount });
-            }
         });
         
         const summaryWS = XLSX.utils.aoa_to_sheet(summaryAOA);
         summaryWS['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 3 } }];
-        summaryWS['!views'] = [{ showGridLines: true }];
-        
-        const colWidths = [
-            { wch: 25 }, // Folder Name
-            { wch: 20 }, // Current File Count
-            { wch: 20 }, // Missing Files Count
-            { wch: 22 }  // Status
+        summaryWS['!cols'] = [
+            { wch: 25 },
+            { wch: 20 },
+            { wch: 20 },
+            { wch: 22 }
         ];
-        summaryWS['!cols'] = colWidths;
-        
-        const rowHeights = [
-            { hpt: 28 }, // Title Row
-            { hpt: 24 }  // Header Row
-        ];
-        for (let r = 2; r < summaryAOA.length; r++) {
-            rowHeights.push({ hpt: 20 });
-        }
-        summaryWS['!rows'] = rowHeights;
-        
-        // Style cells
-        for (const cellKey in summaryWS) {
-            if (cellKey[0] === '!') continue;
-            const cell = summaryWS[cellKey];
-            
-            cell.s = {
-                border: {
-                    top: { style: "thin", color: { rgb: "D1D5DB" } },
-                    bottom: { style: "thin", color: { rgb: "D1D5DB" } },
-                    left: { style: "thin", color: { rgb: "D1D5DB" } },
-                    right: { style: "thin", color: { rgb: "D1D5DB" } }
-                }
-            };
-            
-            const match = cellKey.match(/^([A-Z]+)(\d+)$/);
-            if (match) {
-                const col = match[1];
-                const rowNum = parseInt(match[2], 10);
-                const colIndex = XLSX.utils.decode_col(col);
-                
-                if (rowNum === 1) {
-                    cell.s.fill = { fgColor: { rgb: "4C1D95" } };
-                    cell.s.font = { name: "Arial", sz: 12, bold: true, color: { rgb: "FFFFFF" } };
-                    cell.s.alignment = { horizontal: "center", vertical: "center" };
-                } else if (rowNum === 2) {
-                    cell.s.fill = { fgColor: { rgb: "6D28D9" } };
-                    cell.s.font = { name: "Arial", sz: 10, bold: true, color: { rgb: "FFFFFF" } };
-                    cell.s.alignment = { horizontal: "center", vertical: "center" };
-                } else {
-                    cell.s.font = { name: "Arial", sz: 10, color: { rgb: "000000" } };
-                    if (colIndex === 0) {
-                        cell.s.alignment = { horizontal: "left", vertical: "center" };
-                    } else {
-                        cell.s.alignment = { horizontal: "center", vertical: "center" };
-                    }
-                    
-                    const rowData = summaryAOA[rowNum - 1];
-                    const currentCount = rowData[1];
-                    if (currentCount < 3) {
-                        cell.s.fill = { fgColor: { rgb: "FEE2E2" } };
-                        cell.s.font.color = { rgb: "991B1B" };
-                    }
-                }
-            }
-        }
         
         const summaryWB = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(summaryWB, summaryWS, "Folder_Summary");
@@ -5206,7 +8174,7 @@ async function runFolderCreateProcess() {
                 if (fldMode === 'files') {
                     zip.file(`${prefix}/${fileObj.name}`, fileObj.fileObj);
                 } else {
-                    zip.file(fileObj.relativePath, fileObj.fileObj);
+                    zip.file(fileObj.relativePath || `${prefix}/${fileObj.name}`, fileObj.fileObj);
                 }
             });
         });
@@ -6332,52 +9300,58 @@ function resetProcessorTab() {
 
 function resetRenameTab() {
     renUploadedFiles = [];
+    renIsProcessed = false;
     renGeneratedZipBlob = null;
     renGeneratedZipName = "";
+    renActiveEditFile = null;
 
-    const renFileInput = document.getElementById('ren-file-input');
-    if (renFileInput) renFileInput.value = "";
+    const renFileInputP2 = document.getElementById('ren-file-input-p2');
+    if (renFileInputP2) renFileInputP2.value = "";
 
-    const renFileLabel = document.getElementById('ren-file-label');
-    if (renFileLabel) renFileLabel.textContent = "Drag & Drop files here";
+    const renFileInputG = document.getElementById('ren-file-input-g');
+    if (renFileInputG) renFileInputG.value = "";
 
-    const renFileCount = document.getElementById('ren-file-count');
-    if (renFileCount) renFileCount.textContent = "0 files loaded";
+    updateRenUploadBadges();
 
     const renProgress = document.getElementById('ren-progress');
     if (renProgress) renProgress.classList.add('hidden');
 
-    const renTableContainer = document.getElementById('ren-table-container');
-    if (renTableContainer) renTableContainer.classList.add('hidden');
+    const emptyState = document.getElementById('ren-empty-state');
+    if (emptyState) emptyState.classList.remove('hidden');
 
-    const renEmptyState = document.getElementById('ren-empty-state');
-    if (renEmptyState) renEmptyState.classList.remove('hidden');
+    const stagedState = document.getElementById('ren-staged-state');
+    if (stagedState) stagedState.classList.add('hidden');
 
-    const renPreviewTbody = document.getElementById('ren-preview-tbody');
-    if (renPreviewTbody) renPreviewTbody.innerHTML = "";
+    const resultsContainer = document.getElementById('ren-results-container');
+    if (resultsContainer) resultsContainer.classList.add('hidden');
+
+    const tbodyOrder = document.getElementById('tbody-order-files');
+    if (tbodyOrder) tbodyOrder.innerHTML = "";
+
+    const tbodyTax = document.getElementById('tbody-tax-files');
+    if (tbodyTax) tbodyTax.innerHTML = "";
 
     const btnRenameRun = document.getElementById('btn-rename-run');
-    if (btnRenameRun) {
-        btnRenameRun.classList.add('hidden');
-        btnRenameRun.innerHTML = `
-            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-            Rename Files
-        `;
-        btnRenameRun.style.background = "";
-        btnRenameRun.style.borderColor = "";
-        btnRenameRun.disabled = false;
-    }
+    if (btnRenameRun) btnRenameRun.classList.add('hidden');
 
-    const defaultRadio = document.querySelector('input[name="ren-method"][value="yes"]');
-    if (defaultRadio) defaultRadio.checked = true;
+    closeEditPrefixModal();
+    const renFullviewModal = document.getElementById('ren-fullview-modal');
+    if (renFullviewModal) renFullviewModal.classList.remove('show');
+
+    // Clear 1-hour IndexedDB session storage immediately
+    clearRenameSessionStorage();
 
     showToast("Rename tab cleaned & reset.", "success");
 }
 
 function resetMergeTab() {
     mrgUploadedFiles = [];
+    mrgUniqueGroups = [];
+    mrgGroupsMap = new Map();
     mrgGeneratedZipBlob = null;
     mrgGeneratedZipName = "";
+    mrgSingleFileBlob = null;
+    mrgSingleFileName = "";
 
     const mrgFileInput = document.getElementById('mrg-file-input');
     if (mrgFileInput) mrgFileInput.value = "";
@@ -6400,6 +9374,9 @@ function resetMergeTab() {
     const mrgPreviewTbody = document.getElementById('mrg-preview-tbody');
     if (mrgPreviewTbody) mrgPreviewTbody.innerHTML = "";
 
+    const mrgHeaderActions = document.getElementById('mrg-header-actions');
+    if (mrgHeaderActions) mrgHeaderActions.classList.add('hidden');
+
     const btnMergeRun = document.getElementById('btn-merge-run');
     if (btnMergeRun) {
         btnMergeRun.classList.add('hidden');
@@ -6412,68 +9389,80 @@ function resetMergeTab() {
         btnMergeRun.disabled = false;
     }
 
+    closeMrgFullViewModal();
+    closeEditGroupKeyModal();
+    clearMergeSessionStorage();
+
     showToast("Merge tab cleaned & reset.", "success");
 }
 
 function resetSeparateTab() {
-    sepUploadedFile = null;
-    sepGeneratedZipBlob = null;
-    sepGeneratedZipName = "";
+    sepCategoryState = {
+        simple: { file: null, fileName: '', aoa: null, uniqueValues: [], groups: new Map() },
+        details: { file: null, fileName: '', aoa: null, uniqueValues: [], groups: new Map() },
+        summary: { file: null, fileName: '', aoa: null, uniqueValues: [], groups: new Map() },
+        tax: { file: null, fileName: '', aoa: null, uniqueValues: [], groups: new Map() }
+    };
 
-    const sepFileInput = document.getElementById('sep-file-input');
-    if (sepFileInput) sepFileInput.value = "";
+    ['simple', 'details', 'summary', 'tax'].forEach(catKey => {
+        const input = document.getElementById(`sep-file-input-${catKey}`);
+        if (input) input.value = "";
 
-    const sepFileLabel = document.getElementById('sep-file-label');
-    if (sepFileLabel) sepFileLabel.textContent = "Upload Excel file to split";
+        const label = document.getElementById(`sep-file-label-${catKey}`);
+        if (label) {
+            const names = { simple: 'Upload SIMPLE File', details: 'Upload DETAILS File', summary: 'Upload SUMMARY File', tax: 'Upload TAX SPLIT File' };
+            label.textContent = names[catKey] || 'Upload File';
+        }
 
-    const sepUniqueCount = document.getElementById('sep-unique-count');
-    if (sepUniqueCount) sepUniqueCount.textContent = "0 unique values";
+        const badge = document.getElementById(`sep-badge-${catKey}`);
+        if (badge) badge.textContent = "0 unique";
+
+        const card = document.getElementById(`card-sep-${catKey}`);
+        if (card) card.classList.add('hidden');
+
+        const tbody = document.getElementById(`tbody-sep-${catKey}`);
+        if (tbody) tbody.innerHTML = "";
+    });
 
     const sepProgress = document.getElementById('sep-progress');
     if (sepProgress) sepProgress.classList.add('hidden');
 
-    const sepTableContainer = document.getElementById('sep-table-container');
-    if (sepTableContainer) sepTableContainer.classList.add('hidden');
-
     const sepEmptyState = document.getElementById('sep-empty-state');
     if (sepEmptyState) sepEmptyState.classList.remove('hidden');
 
-    const sepPreviewTbody = document.getElementById('sep-preview-tbody');
-    if (sepPreviewTbody) sepPreviewTbody.innerHTML = "";
+    const sepResultsContainer = document.getElementById('sep-results-container');
+    if (sepResultsContainer) sepResultsContainer.classList.add('hidden');
 
-    const btnSplitRun = document.getElementById('btn-split-run');
-    if (btnSplitRun) {
-        btnSplitRun.classList.add('hidden');
-        btnSplitRun.innerHTML = `
-            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="8" height="18" rx="2"></rect><rect x="14" y="3" width="8" height="18" rx="2"></rect></svg>
-            Split File
-        `;
-        btnSplitRun.style.background = "";
-        btnSplitRun.style.borderColor = "";
-        btnSplitRun.disabled = false;
-    }
-
-    const defaultMode = document.querySelector('input[name="split-mode"][value="1"]');
-    if (defaultMode) defaultMode.checked = true;
+    closeSepFullViewModal();
+    clearSeparateSessionStorage();
 
     showToast("Separate tab cleaned & reset.", "success");
 }
 
 function resetFolderCreateTab() {
     fldUploadedFiles = [];
+    fldExpandedFolders.clear();
     fldGeneratedZipBlob = null;
     fldGeneratedZipName = "";
 
     const fldFileInput = document.getElementById('fld-file-input');
     const fldFolderInput = document.getElementById('fld-folder-input');
+    const fldManualInput = document.getElementById('fld-manual-file-input');
     if (fldFileInput) fldFileInput.value = "";
     if (fldFolderInput) fldFolderInput.value = "";
+    if (fldManualInput) fldManualInput.value = "";
 
     const fldFileLabel = document.getElementById('fld-file-label');
     if (fldFileLabel) fldFileLabel.textContent = "Drag & Drop files here";
 
     const fldFileCount = document.getElementById('fld-file-count');
     if (fldFileCount) fldFileCount.textContent = "0 files loaded";
+
+    const fldMissingBadge = document.getElementById('fld-missing-badge');
+    if (fldMissingBadge) fldMissingBadge.classList.add('hidden');
+
+    const fldHeaderActions = document.getElementById('fld-header-actions');
+    if (fldHeaderActions) fldHeaderActions.classList.add('hidden');
 
     const fldProgress = document.getElementById('fld-progress');
     if (fldProgress) fldProgress.classList.add('hidden');
@@ -6504,6 +9493,11 @@ function resetFolderCreateTab() {
         btnFldRun.style.borderColor = "";
         btnFldRun.disabled = false;
     }
+
+    closeFldFullViewModal();
+    closeCopyFileToFoldersModal();
+    closeEditFldFileModal();
+    clearFolderCreateSessionStorage();
 
     showToast("Folder Create tab cleaned & reset.", "success");
 }

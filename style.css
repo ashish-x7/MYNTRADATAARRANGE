@@ -1541,3 +1541,132 @@ input:checked + .slider:before {
     box-shadow: 0 2px 8px rgba(220, 38, 38, 0.15);
 }
 
+/* Unmatched files red warning highlight */
+.row-unmatched-warning {
+    background: rgba(220, 38, 38, 0.08) !important;
+    border-left: 3.5px solid #dc2626 !important;
+    transition: background 0.2s ease;
+}
+
+.row-unmatched-warning:hover {
+    background: rgba(220, 38, 38, 0.14) !important;
+}
+
+.btn-action:hover {
+    transform: scale(1.08);
+}
+
+/* Full Page Modal Styling */
+#ren-fullview-modal .modal-content,
+#mrg-fullview-modal .modal-content,
+#sep-fullview-modal .modal-content,
+#fld-fullview-modal .modal-content,
+#inspector-modal .modal-content {
+    background: #ffffff;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+    border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+#tbody-fullview-files tr td,
+#tbody-mrg-fullview-files tr td,
+#tbody-sep-fullview-files tr td,
+#tbody-fld-fullview-files tr td,
+#inspector-tbody tr td {
+    padding: 0.45rem 0.75rem;
+    vertical-align: middle;
+}
+
+/* Modal Stacking Context: Ensure proper layering across full view, inspector, edit, and confirm delete */
+#ren-fullview-modal,
+#mrg-fullview-modal,
+#sep-fullview-modal,
+#fld-fullview-modal {
+    z-index: 11000 !important;
+}
+
+#inspector-modal {
+    z-index: 12500 !important;
+}
+
+#edit-prefix-modal,
+#edit-group-key-modal,
+#edit-fld-file-modal,
+#copy-file-to-folders-modal {
+    z-index: 13500 !important;
+}
+
+#confirm-delete-modal {
+    z-index: 15000 !important;
+}
+
+#inspector-modal.show,
+#edit-prefix-modal.show,
+#edit-group-key-modal.show,
+#edit-fld-file-modal.show,
+#copy-file-to-folders-modal.show,
+#confirm-delete-modal.show {
+    background: rgba(15, 23, 42, 0.65) !important;
+    backdrop-filter: blur(8px) !important;
+    -webkit-backdrop-filter: blur(8px) !important;
+}
+
+/* Folder Create Accordion & Subtable Styling */
+.fld-accordion-header {
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.fld-accordion-header:hover {
+    background: rgba(124, 58, 237, 0.04) !important;
+}
+
+.fld-accordion-icon {
+    display: inline-block;
+    transition: transform 0.2s ease;
+}
+
+.fld-accordion-icon.expanded {
+    transform: rotate(90deg);
+}
+
+.fld-accordion-subtable {
+    background: #f8fafc;
+    border-radius: 8px;
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    margin: 0.4rem 0.6rem 0.6rem 0.6rem;
+    padding: 0.4rem;
+}
+
+.btn-sub-copy {
+    transition: all 0.15s ease;
+}
+
+.btn-sub-copy:hover {
+    background: var(--primary) !important;
+    color: #ffffff !important;
+    transform: translateY(-1px);
+}
+
+.btn-sub-icon {
+    transition: all 0.15s ease;
+}
+
+.btn-sub-icon:hover {
+    transform: translateY(-1px);
+    filter: brightness(0.95);
+}
+
+.fld-missing-slot-row {
+    transition: background 0.15s ease;
+}
+
+.fld-missing-slot-row:hover {
+    background: rgba(239, 68, 68, 0.08) !important;
+}
+
+#toast {
+    z-index: 99999 !important;
+}
+
+
+

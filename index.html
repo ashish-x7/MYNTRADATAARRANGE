@@ -47,11 +47,11 @@
                 <svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path><line x1="12" y1="11" x2="12" y2="17"></line><line x1="9" y1="14" x2="15" y2="14"></line></svg>
                 Folder Create
             </button>
-            <button class="tab-btn" data-tab="tab-processor">
+            <button class="tab-btn" data-tab="tab-processor" id="btn-processor-tab">
                 <svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
                 File Renamer & Processor
             </button>
-            <button class="tab-btn" data-tab="tab-database">
+            <button class="tab-btn" data-tab="tab-database" id="btn-database-tab">
                 <svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path></svg>
                 Myntra Party Database
             </button>
@@ -458,11 +458,41 @@
                         </div>
                     </div>
 
+                    <!-- Session Auto-Save Banner (1 Hour Cache) -->
+                    <div id="fld-session-banner" class="hidden" style="background: rgba(124, 58, 237, 0.05); border: 1px solid rgba(124, 58, 237, 0.18); border-radius: 10px; padding: 0.5rem 0.85rem; display: flex; justify-content: space-between; align-items: center; font-size: 0.74rem; color: var(--text-primary); margin-bottom: 0.75rem;">
+                        <span style="display: flex; align-items: center; gap: 6px;">
+                            <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="color: var(--primary);"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                            <strong>Session Auto-Saved:</strong> Folders & files will stay saved for 1 hour across page reloads.
+                        </span>
+                        <span id="fld-session-timer" style="color: var(--primary); font-weight: 700; font-size: 0.72rem;"></span>
+                    </div>
+
                     <!-- Preview Card -->
                     <div class="card glass preview-card" style="min-height: 400px;">
-                        <div class="card-header">
-                            <h2>Folder Grouping Preview</h2>
-                            <span class="info-tag" id="fld-file-count">0 files loaded</span>
+                        <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+                            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                <h2 style="margin: 0; font-size: 0.95rem;">📁 Folder Grouping Preview</h2>
+                                <span class="info-tag" id="fld-file-count">0 files loaded</span>
+                                <span class="badge badge-od hidden" id="fld-missing-badge" style="font-size: 0.7rem; background: rgba(239, 68, 68, 0.12); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.25);">0 Missing</span>
+                            </div>
+                            <div id="fld-header-actions" class="hidden" style="display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;">
+                                <button class="btn btn-secondary" id="btn-fld-download-error-excel" style="padding: 0.28rem 0.65rem; font-size: 0.72rem; color: #dc2626; border-color: rgba(220, 38, 38, 0.25); font-weight: 600;" title="Download Excel report with error & missing folders">
+                                    <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.2" fill="none"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                                    Download Error Excel
+                                </button>
+                                <button class="btn btn-secondary" id="btn-fld-fullview" style="padding: 0.28rem 0.65rem; font-size: 0.72rem;">
+                                    <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2" fill="none"><path d="M15 3h6v6"></path><path d="M9 21H3v-6"></path><path d="M21 3l-7 7"></path><path d="M3 21l7-7"></path></svg>
+                                    Full View
+                                </button>
+                                <button class="btn btn-secondary" id="btn-fld-move-to-processor" style="padding: 0.28rem 0.65rem; font-size: 0.72rem; color: #7c3aed; font-weight: 700; border-color: rgba(124, 58, 237, 0.25);" title="Send processed folder files directly to File Renamer & Processor tab">
+                                    <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none"><path d="M5 12h14"></path><path d="M12 5l7 7-7 7"></path></svg>
+                                    Move to Processor
+                                </button>
+                                <button class="btn btn-primary btn-glow" id="btn-fld-download-zip" style="padding: 0.28rem 0.75rem; font-size: 0.72rem;">
+                                    <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                                    Download ZIP
+                                </button>
+                            </div>
                         </div>
 
                         <!-- Empty State -->
@@ -471,19 +501,21 @@
                                 <svg viewBox="0 0 24 24" width="52" height="52" stroke="currentColor" stroke-width="1.2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
                             </div>
                             <h3>No files loaded</h3>
-                            <p>Upload Excel or CSV files to preview folder groupings and missing files.</p>
+                            <p>Upload Excel or CSV files to preview folder groupings, missing files, and copy files across folders.</p>
                         </div>
 
                         <!-- Table Container -->
-                        <div class="table-container hidden" id="fld-table-container">
-                            <table class="preview-table">
+                        <div class="table-container hidden" id="fld-table-container" style="max-height: 520px; overflow-y: auto;">
+                            <table class="preview-table" style="font-size: 0.76rem; width: 100%;">
                                 <thead>
                                     <tr>
-                                        <th style="width: 50px;">#</th>
+                                        <th style="width: 35px;"></th>
+                                        <th style="width: 40px;">#</th>
                                         <th>Folder Name (Prefix)</th>
-                                        <th>File Count</th>
-                                        <th>Status</th>
-                                        <th>Files</th>
+                                        <th style="width: 90px;">File Count</th>
+                                        <th style="width: 170px;">Status</th>
+                                        <th>Files Preview</th>
+                                        <th style="width: 110px; text-align: center;">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody id="fld-preview-tbody"></tbody>
@@ -574,77 +606,103 @@
         <!-- Tab 3: Separate File Content -->
         <div class="tab-content" id="tab-separate">
             <div class="app-grid">
-                <!-- Left Panel: Upload & Config -->
+                <!-- Left Panel: 4 Dedicated Upload Dropzones -->
                 <section class="panel-left">
-                    <!-- Upload Card -->
                     <div class="card glass upload-card">
                         <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
                             <div>
-                                <h2>Upload File to Split</h2>
-                                <span class="info-tag">Merge Details / Summary / Tax</span>
+                                <h2>Upload Files to Split</h2>
+                                <span class="info-tag">4 Split Categories</span>
                             </div>
                             <button class="btn-reset-tab" id="btn-reset-separate" title="Clean & Reset Tab">
                                 <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
                                 Clean & Reset
                             </button>
                         </div>
-                        <div class="dropzone" id="sep-dropzone">
-                            <input type="file" id="sep-file-input" accept=".xlsx,.xls" class="hidden-input">
-                            <div class="dropzone-content">
-                                <div class="upload-icon">
-                                    <svg viewBox="0 0 24 24" width="40" height="40" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+
+                        <div style="display: flex; flex-direction: column; gap: 0.75rem; margin-top: 0.5rem;">
+                            <!-- 1. SIMPLE (Column G) -->
+                            <div>
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
+                                    <span style="font-size: 0.75rem; font-weight: 700; color: var(--primary);">📦 1. SIMPLE (Column G)</span>
+                                    <span class="badge badge-od" id="sep-badge-simple" style="font-size: 0.65rem;">0 unique</span>
                                 </div>
-                                <h3 id="sep-file-label">Upload Excel file to split</h3>
-                                <p>Supports .xlsx and .xls files</p>
+                                <div class="dropzone" id="sep-dropzone-simple" style="padding: 0.85rem 0.5rem;">
+                                    <input type="file" id="sep-file-input-simple" accept=".xlsx,.xls" class="hidden-input">
+                                    <div class="dropzone-content" style="gap: 0.3rem;">
+                                        <div class="upload-icon" style="width: 32px; height: 32px; margin-bottom: 0.2rem;">
+                                            <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                                        </div>
+                                        <h3 id="sep-file-label-simple" style="font-size: 0.82rem; margin: 0;">Upload SIMPLE File</h3>
+                                        <p style="font-size: 0.68rem; margin: 0;">Split by Column G</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 2. DETAILS (Column D) -->
+                            <div>
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
+                                    <span style="font-size: 0.75rem; font-weight: 700; color: #6366f1;">📄 2. DETAILS (Column D)</span>
+                                    <span class="badge" id="sep-badge-details" style="font-size: 0.65rem; background: rgba(99, 102, 241, 0.12); color: #6366f1;">0 unique</span>
+                                </div>
+                                <div class="dropzone" id="sep-dropzone-details" style="padding: 0.85rem 0.5rem; border-color: rgba(99, 102, 241, 0.25);">
+                                    <input type="file" id="sep-file-input-details" accept=".xlsx,.xls" class="hidden-input">
+                                    <div class="dropzone-content" style="gap: 0.3rem;">
+                                        <div class="upload-icon" style="width: 32px; height: 32px; margin-bottom: 0.2rem; color: #6366f1; background: rgba(99, 102, 241, 0.08);">
+                                            <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+                                        </div>
+                                        <h3 id="sep-file-label-details" style="font-size: 0.82rem; margin: 0;">Upload DETAILS File</h3>
+                                        <p style="font-size: 0.68rem; margin: 0;">Split by Column D</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 3. SUMMARY (Column G) -->
+                            <div>
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
+                                    <span style="font-size: 0.75rem; font-weight: 700; color: #0284c7;">📊 3. SUMMARY (Column G)</span>
+                                    <span class="badge" id="sep-badge-summary" style="font-size: 0.65rem; background: rgba(2, 132, 199, 0.12); color: #0284c7;">0 unique</span>
+                                </div>
+                                <div class="dropzone" id="sep-dropzone-summary" style="padding: 0.85rem 0.5rem; border-color: rgba(2, 132, 199, 0.25);">
+                                    <input type="file" id="sep-file-input-summary" accept=".xlsx,.xls" class="hidden-input">
+                                    <div class="dropzone-content" style="gap: 0.3rem;">
+                                        <div class="upload-icon" style="width: 32px; height: 32px; margin-bottom: 0.2rem; color: #0284c7; background: rgba(2, 132, 199, 0.08);">
+                                            <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
+                                        </div>
+                                        <h3 id="sep-file-label-summary" style="font-size: 0.82rem; margin: 0;">Upload SUMMARY File</h3>
+                                        <p style="font-size: 0.68rem; margin: 0;">Split by Column G</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 4. TAX SPLIT (Column A) -->
+                            <div>
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
+                                    <span style="font-size: 0.75rem; font-weight: 700; color: #059669;">🏷️ 4. TAX SPLIT (Column A)</span>
+                                    <span class="badge badge-dt" id="sep-badge-tax" style="font-size: 0.65rem;">0 unique</span>
+                                </div>
+                                <div class="dropzone" id="sep-dropzone-tax" style="padding: 0.85rem 0.5rem; border-color: rgba(5, 150, 105, 0.25);">
+                                    <input type="file" id="sep-file-input-tax" accept=".xlsx,.xls" class="hidden-input">
+                                    <div class="dropzone-content" style="gap: 0.3rem;">
+                                        <div class="upload-icon" style="width: 32px; height: 32px; margin-bottom: 0.2rem; color: #059669; background: rgba(5, 150, 105, 0.08);">
+                                            <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path><line x1="7" y1="7" x2="7.01" y2="7"></line></svg>
+                                        </div>
+                                        <h3 id="sep-file-label-tax" style="font-size: 0.82rem; margin: 0;">Upload TAX SPLIT File</h3>
+                                        <p style="font-size: 0.68rem; margin: 0;">Split by Column A</p>
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                    </div>
 
-                    <!-- Split Mode Selector -->
-                    <div class="card glass">
-                        <div class="card-header">
-                            <h2>Split Mode</h2>
-                        </div>
-                        <div style="padding: 0.85rem; display: flex; flex-direction: column; gap: 0.5rem;">
-                            <label class="split-option">
-                                <input type="radio" name="split-mode" value="1" checked>
-                                <div class="split-option-content">
-                                    <strong>SIMPLE</strong>
-                                    <span>Column G</span>
-                                </div>
-                            </label>
-                            <label class="split-option">
-                                <input type="radio" name="split-mode" value="2">
-                                <div class="split-option-content">
-                                    <strong>DETAILS</strong>
-                                    <span>Column D</span>
-                                </div>
-                            </label>
-                            <label class="split-option">
-                                <input type="radio" name="split-mode" value="3">
-                                <div class="split-option-content">
-                                    <strong>SUMMARY</strong>
-                                    <span>Column G</span>
-                                </div>
-                            </label>
-                            <label class="split-option">
-                                <input type="radio" name="split-mode" value="4">
-                                <div class="split-option-content">
-                                    <strong>TAX SPLIT</strong>
-                                    <span>Column A</span>
-                                </div>
-                            </label>
-                        </div>
+                        <!-- Start Separate Action Button -->
+                        <button class="btn btn-primary btn-glow" id="btn-start-separate" style="width: 100%; margin-top: 0.9rem; padding: 0.75rem; font-size: 0.92rem; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 0.5rem; background: linear-gradient(135deg, #7c3aed, #4f46e5); border: none; border-radius: 10px; cursor: pointer; box-shadow: 0 4px 14px rgba(124, 58, 237, 0.35);">
+                            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                            Start Separate
+                        </button>
                     </div>
-
-                    <!-- Action Button -->
-                    <button class="btn btn-primary btn-glow hidden" id="btn-split-run" style="width: 100%; padding: 0.7rem; font-size: 0.9rem; justify-content: center;">
-                        <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="8" height="18" rx="2"></rect><rect x="14" y="3" width="8" height="18" rx="2"></rect></svg>
-                        Split File
-                    </button>
                 </section>
 
-                <!-- Right Panel: Preview -->
+                <!-- Right Panel: Categorized Preview Cards -->
                 <section class="panel-right">
                     <!-- Inline progress -->
                     <div class="inline-progress hidden" id="sep-progress">
@@ -657,36 +715,184 @@
                         </div>
                     </div>
 
-                    <!-- Preview Card -->
-                    <div class="card glass preview-card" style="min-height: 400px;">
-                        <div class="card-header">
-                            <h2>Split Preview</h2>
-                            <span class="info-tag" id="sep-unique-count">0 unique values</span>
-                        </div>
+                    <!-- Session Auto-Save Banner (1 Hour Cache) -->
+                    <div id="sep-session-banner" class="hidden" style="background: rgba(124, 58, 237, 0.05); border: 1px solid rgba(124, 58, 237, 0.18); border-radius: 10px; padding: 0.5rem 0.85rem; display: flex; justify-content: space-between; align-items: center; font-size: 0.74rem; color: var(--text-primary); margin-bottom: 0.75rem;">
+                        <span style="display: flex; align-items: center; gap: 6px;">
+                            <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="color: var(--primary);"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                            <strong>Session Auto-Saved:</strong> Split files will stay saved for 1 hour across page reloads.
+                        </span>
+                        <span id="sep-session-timer" style="color: var(--primary); font-weight: 700; font-size: 0.72rem;"></span>
+                    </div>
 
-                        <!-- Empty State -->
-                        <div class="empty-state" id="sep-empty-state">
-                            <div class="empty-icon">
-                                <svg viewBox="0 0 24 24" width="52" height="52" stroke="currentColor" stroke-width="1.2" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="8" height="18" rx="2"></rect><rect x="14" y="3" width="8" height="18" rx="2"></rect></svg>
+                    <!-- Empty State -->
+                    <div class="card glass empty-state" id="sep-empty-state" style="min-height: 400px; display: flex; flex-direction: column; justify-content: center; align-items: center;">
+                        <div class="empty-icon">
+                            <svg viewBox="0 0 24 24" width="52" height="52" stroke="currentColor" stroke-width="1.2" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="8" height="18" rx="2"></rect><rect x="14" y="3" width="8" height="18" rx="2"></rect></svg>
+                        </div>
+                        <h3>No files loaded</h3>
+                        <p>Upload Excel files into any of the 4 split boxes on the left to preview & download split results.</p>
+                    </div>
+
+                    <!-- Results Container -->
+                    <div id="sep-results-container" class="hidden" style="display: flex; flex-direction: column; gap: 0.85rem;">
+                        
+                        <!-- Top Summary Bar -->
+                        <div class="card glass" style="padding: 0.6rem 0.9rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+                            <div style="display: flex; align-items: center; gap: 0.6rem;">
+                                <span class="badge badge-od" id="sep-total-summary-badge" style="font-size: 0.75rem;">0 Total Splits</span>
                             </div>
-                            <h3>No file loaded</h3>
-                            <p>Upload an Excel file and choose a split mode to preview unique values.</p>
+                            <div style="display: flex; align-items: center; gap: 0.4rem;">
+                                <button class="btn btn-secondary" id="btn-sep-all-fullview" style="padding: 0.3rem 0.65rem; font-size: 0.74rem;">
+                                    <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"></path><path d="M9 21H3v-6"></path><path d="M21 3l-7 7"></path><path d="M3 21l7-7"></path></svg>
+                                    Full View (All)
+                                </button>
+                                <button class="btn btn-primary btn-glow" id="btn-sep-download-all-zip" style="padding: 0.3rem 0.75rem; font-size: 0.74rem;">
+                                    <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                                    Download All ZIP
+                                </button>
+                            </div>
                         </div>
 
-                        <!-- Preview Table -->
-                        <div class="table-container hidden" id="sep-table-container">
-                            <table class="preview-table">
-                                <thead>
-                                    <tr>
-                                        <th style="width: 50px;">#</th>
-                                        <th>Unique Value</th>
-                                        <th>Row Count</th>
-                                        <th>Output File Name</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="sep-preview-tbody"></tbody>
-                            </table>
+                        <!-- 1. SIMPLE (Column G) Card -->
+                        <div class="card glass hidden" id="card-sep-simple" style="border-left: 4px solid var(--primary);">
+                            <div class="card-header" style="padding: 0.65rem 0.9rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+                                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                    <h3 style="font-size: 0.88rem; font-weight: 700; color: var(--text-primary); margin: 0;">📦 1. SIMPLE (Column G)</h3>
+                                    <span class="badge badge-od" id="sep-count-simple" style="font-size: 0.68rem;">0 unique values</span>
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;">
+                                    <button class="btn btn-secondary" id="btn-sep-simple-fullview" style="padding: 0.28rem 0.6rem; font-size: 0.72rem;">
+                                        <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2" fill="none"><path d="M15 3h6v6"></path><path d="M9 21H3v-6"></path><path d="M21 3l-7 7"></path><path d="M3 21l7-7"></path></svg>
+                                        Full View
+                                    </button>
+                                    <button class="btn btn-secondary" id="btn-sep-simple-move-to-folder" style="padding: 0.28rem 0.65rem; font-size: 0.72rem; color: #059669; font-weight: 700; border-color: rgba(5, 150, 105, 0.25);" title="Transfer Simple splits directly to Folder Create tab">
+                                        <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+                                        Move to Folder Create
+                                    </button>
+                                    <button class="btn btn-primary" id="btn-sep-simple-download-zip" style="padding: 0.28rem 0.65rem; font-size: 0.72rem;">
+                                        <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                                        Download ZIP
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="table-container" style="max-height: 220px; overflow-y: auto; margin: 0; padding: 0;">
+                                <table class="preview-table" style="font-size: 0.74rem; width: 100%;">
+                                    <thead>
+                                        <tr>
+                                            <th style="width: 35px;">#</th>
+                                            <th>Unique Value (Col G)</th>
+                                            <th style="width: 90px;">Row Count</th>
+                                            <th>Output Filename</th>
+                                            <th style="width: 90px; text-align: center;">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="tbody-sep-simple"></tbody>
+                                </table>
+                            </div>
                         </div>
+
+                        <!-- 2. DETAILS (Column D) Card -->
+                        <div class="card glass hidden" id="card-sep-details" style="border-left: 4px solid #6366f1;">
+                            <div class="card-header" style="padding: 0.65rem 0.9rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+                                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                    <h3 style="font-size: 0.88rem; font-weight: 700; color: var(--text-primary); margin: 0;">📄 2. DETAILS (Column D)</h3>
+                                    <span class="badge" id="sep-count-details" style="font-size: 0.68rem; background: rgba(99, 102, 241, 0.12); color: #6366f1;">0 unique values</span>
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;">
+                                    <button class="btn btn-secondary" id="btn-sep-details-fullview" style="padding: 0.28rem 0.6rem; font-size: 0.72rem;">
+                                        <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2" fill="none"><path d="M15 3h6v6"></path><path d="M9 21H3v-6"></path><path d="M21 3l-7 7"></path><path d="M3 21l7-7"></path></svg>
+                                        Full View
+                                    </button>
+                                    <button class="btn btn-primary" id="btn-sep-details-download-zip" style="padding: 0.28rem 0.65rem; font-size: 0.72rem; background: #6366f1; border-color: #6366f1;">
+                                        <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                                        Download ZIP
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="table-container" style="max-height: 220px; overflow-y: auto; margin: 0; padding: 0;">
+                                <table class="preview-table" style="font-size: 0.74rem; width: 100%;">
+                                    <thead>
+                                        <tr>
+                                            <th style="width: 35px;">#</th>
+                                            <th>Unique Value (Col D)</th>
+                                            <th style="width: 90px;">Row Count</th>
+                                            <th>Output Filename</th>
+                                            <th style="width: 90px; text-align: center;">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="tbody-sep-details"></tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- 3. SUMMARY (Column G) Card -->
+                        <div class="card glass hidden" id="card-sep-summary" style="border-left: 4px solid #0284c7;">
+                            <div class="card-header" style="padding: 0.65rem 0.9rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+                                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                    <h3 style="font-size: 0.88rem; font-weight: 700; color: var(--text-primary); margin: 0;">📊 3. SUMMARY (Column G)</h3>
+                                    <span class="badge" id="sep-count-summary" style="font-size: 0.68rem; background: rgba(2, 132, 199, 0.12); color: #0284c7;">0 unique values</span>
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;">
+                                    <button class="btn btn-secondary" id="btn-sep-summary-fullview" style="padding: 0.28rem 0.6rem; font-size: 0.72rem;">
+                                        <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2" fill="none"><path d="M15 3h6v6"></path><path d="M9 21H3v-6"></path><path d="M21 3l-7 7"></path><path d="M3 21l7-7"></path></svg>
+                                        Full View
+                                    </button>
+                                    <button class="btn btn-primary" id="btn-sep-summary-download-zip" style="padding: 0.28rem 0.65rem; font-size: 0.72rem; background: #0284c7; border-color: #0284c7;">
+                                        <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                                        Download ZIP
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="table-container" style="max-height: 220px; overflow-y: auto; margin: 0; padding: 0;">
+                                <table class="preview-table" style="font-size: 0.74rem; width: 100%;">
+                                    <thead>
+                                        <tr>
+                                            <th style="width: 35px;">#</th>
+                                            <th>Unique Value (Col G)</th>
+                                            <th style="width: 90px;">Row Count</th>
+                                            <th>Output Filename</th>
+                                            <th style="width: 90px; text-align: center;">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="tbody-sep-summary"></tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- 4. TAX SPLIT (Column A) Card -->
+                        <div class="card glass hidden" id="card-sep-tax" style="border-left: 4px solid #059669;">
+                            <div class="card-header" style="padding: 0.65rem 0.9rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+                                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                    <h3 style="font-size: 0.88rem; font-weight: 700; color: var(--text-primary); margin: 0;">🏷️ 4. TAX SPLIT (Column A)</h3>
+                                    <span class="badge badge-dt" id="sep-count-tax" style="font-size: 0.68rem;">0 unique values</span>
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;">
+                                    <button class="btn btn-secondary" id="btn-sep-tax-fullview" style="padding: 0.28rem 0.6rem; font-size: 0.72rem;">
+                                        <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2" fill="none"><path d="M15 3h6v6"></path><path d="M9 21H3v-6"></path><path d="M21 3l-7 7"></path><path d="M3 21l7-7"></path></svg>
+                                        Full View
+                                    </button>
+                                    <button class="btn btn-primary" id="btn-sep-tax-download-zip" style="padding: 0.28rem 0.65rem; font-size: 0.72rem; background: #059669; border-color: #059669;">
+                                        <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                                        Download ZIP
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="table-container" style="max-height: 220px; overflow-y: auto; margin: 0; padding: 0;">
+                                <table class="preview-table" style="font-size: 0.74rem; width: 100%;">
+                                    <thead>
+                                        <tr>
+                                            <th style="width: 35px;">#</th>
+                                            <th>Unique Value (Col A)</th>
+                                            <th style="width: 90px;">Row Count</th>
+                                            <th>Output Filename</th>
+                                            <th style="width: 90px; text-align: center;">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="tbody-sep-tax"></tbody>
+                                </table>
+                            </div>
+                        </div>
+
                     </div>
                 </section>
             </div>
@@ -695,63 +901,88 @@
         <!-- Tab 4: Rename File Content -->
         <div class="tab-content active" id="tab-rename">
             <div class="app-grid">
-                <!-- Left Panel: Upload & Config -->
+                <!-- Left Panel: Dual Upload & Config -->
                 <section class="panel-left">
-                    <!-- Upload Card -->
-                    <div class="card glass upload-card">
-                        <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                    <!-- Clean & Reset Tab Header -->
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.1rem 0.2rem;">
+                        <span style="font-size: 0.85rem; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 6px;">
+                            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="color: var(--primary);"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>
+                            Dual File Upload & Rename
+                        </span>
+                        <button class="btn-reset-tab" id="btn-reset-rename" title="Clean & Reset Tab">
+                            <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
+                            Clean & Reset
+                        </button>
+                    </div>
+
+                    <!-- Upload Box 1: P2 Value Files -->
+                    <div class="card glass upload-card" style="border-left: 4px solid var(--primary);">
+                        <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; padding: 0.65rem 0.9rem;">
                             <div>
-                                <h2>Upload Files to Rename</h2>
-                                <span class="info-tag">Excel & CSV files</span>
+                                <h2 style="font-size: 0.88rem; font-weight: 700; color: var(--text-primary); margin: 0; display: flex; align-items: center; gap: 6px;">
+                                    <span style="background: var(--primary); color: white; border-radius: 50%; width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; font-size: 0.68rem;">1</span>
+                                    P2 Value Files
+                                </h2>
+                                <span class="info-tag" style="background: rgba(124, 58, 237, 0.1); color: var(--primary); font-size: 0.65rem;">Option A (Cell P2)</span>
                             </div>
-                            <button class="btn-reset-tab" id="btn-reset-rename" title="Clean & Reset Tab">
-                                <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
-                                Clean & Reset
-                            </button>
+                            <div style="display: flex; align-items: center; gap: 0.4rem;">
+                                <span class="badge badge-od" id="ren-p2-count-badge" style="font-size: 0.68rem; padding: 2px 7px;">0 files</span>
+                                <button class="btn-clear" id="btn-ren-p2-clear" title="Clear P2 files" style="background: none; border: none; font-size: 0.72rem; color: var(--color-danger); cursor: pointer; display: none; padding: 2px;">
+                                    <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                                </button>
+                            </div>
                         </div>
-                        <div class="dropzone" id="ren-dropzone">
-                            <input type="file" id="ren-file-input" multiple accept=".xlsx,.xls,.csv" class="hidden-input">
+                        <div class="dropzone" id="ren-dropzone-p2" style="padding: 1rem 0.75rem; margin-top: 0.35rem;">
+                            <input type="file" id="ren-file-input-p2" multiple accept=".xlsx,.xls,.csv,.zip" class="hidden-input">
                             <div class="dropzone-content">
-                                <div class="upload-icon">
-                                    <svg viewBox="0 0 24 24" width="40" height="40" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                                <div class="upload-icon" style="margin-bottom: 0.25rem;">
+                                    <svg viewBox="0 0 24 24" width="28" height="28" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" style="color: var(--primary);"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
                                 </div>
-                                <h3 id="ren-file-label">Drag & Drop files here</h3>
-                                <p>Supports Excel (.xlsx, .xls) & CSV files</p>
+                                <h3 id="ren-file-label-p2" style="font-size: 0.82rem; font-weight: 600; margin-bottom: 2px;">Drop P2 Files / ZIP here</h3>
+                                <p style="font-size: 0.68rem; margin: 0; color: var(--text-secondary);">Maps code from Cell P2 using Database</p>
+                                <button type="button" class="btn btn-secondary" id="btn-ren-p2-select" style="margin-top: 0.5rem; padding: 0.25rem 0.7rem; font-size: 0.75rem;">Select P2 Files</button>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Rename Option Selector -->
-                    <div class="card glass">
-                        <div class="card-header">
-                            <h2>Rename Method</h2>
+                    <!-- Upload Box 2: Column G Files -->
+                    <div class="card glass upload-card" style="border-left: 4px solid #059669;">
+                        <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; padding: 0.65rem 0.9rem;">
+                            <div>
+                                <h2 style="font-size: 0.88rem; font-weight: 700; color: var(--text-primary); margin: 0; display: flex; align-items: center; gap: 6px;">
+                                    <span style="background: #059669; color: white; border-radius: 50%; width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; font-size: 0.68rem;">2</span>
+                                    Column G Files
+                                </h2>
+                                <span class="info-tag" style="background: rgba(5, 150, 105, 0.1); color: #059669; font-size: 0.65rem;">Option B (Column G)</span>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 0.4rem;">
+                                <span class="badge badge-dt" id="ren-g-count-badge" style="font-size: 0.68rem; padding: 2px 7px;">0 files</span>
+                                <button class="btn-clear" id="btn-ren-g-clear" title="Clear Column G files" style="background: none; border: none; font-size: 0.72rem; color: var(--color-danger); cursor: pointer; display: none; padding: 2px;">
+                                    <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                                </button>
+                            </div>
                         </div>
-                        <div style="padding: 0.85rem; display: flex; flex-direction: column; gap: 0.6rem;">
-                            <label class="split-option">
-                                <input type="radio" name="ren-method" value="yes" checked>
-                                <div class="split-option-content">
-                                    <strong>Option A: Use P2 Value</strong>
-                                    <span>Extracts code from Cell P2 and maps it using database</span>
+                        <div class="dropzone" id="ren-dropzone-g" style="padding: 1rem 0.75rem; margin-top: 0.35rem;">
+                            <input type="file" id="ren-file-input-g" multiple accept=".xlsx,.xls,.csv,.zip" class="hidden-input">
+                            <div class="dropzone-content">
+                                <div class="upload-icon" style="margin-bottom: 0.25rem;">
+                                    <svg viewBox="0 0 24 24" width="28" height="28" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" style="color: #059669;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
                                 </div>
-                            </label>
-                            <label class="split-option">
-                                <input type="radio" name="ren-method" value="no">
-                                <div class="split-option-content">
-                                    <strong>Option B: Scan Column G</strong>
-                                    <span>Searches Column G cells for non-CGJ1 codes</span>
-                                </div>
-                            </label>
+                                <h3 id="ren-file-label-g" style="font-size: 0.82rem; font-weight: 600; margin-bottom: 2px;">Drop Column G Files / ZIP here</h3>
+                                <p style="font-size: 0.68rem; margin: 0; color: var(--text-secondary);">Searches Column G for CGJ1 / Party codes</p>
+                                <button type="button" class="btn btn-secondary" id="btn-ren-g-select" style="margin-top: 0.5rem; padding: 0.25rem 0.7rem; font-size: 0.75rem;">Select Column G Files</button>
+                            </div>
                         </div>
                     </div>
 
                     <!-- Action Button -->
-                    <button class="btn btn-primary btn-glow hidden" id="btn-rename-run" style="width: 100%; padding: 0.7rem; font-size: 0.9rem; justify-content: center;">
+                    <button class="btn btn-primary btn-glow hidden" id="btn-rename-run" style="width: 100%; padding: 0.75rem; font-size: 0.92rem; justify-content: center; font-weight: 600;">
                         <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-                        Rename Files
+                        Rename All Files
                     </button>
                 </section>
 
-                <!-- Right Panel: Preview -->
+                <!-- Right Panel: Categorized File Lists & Actions -->
                 <section class="panel-right">
                     <!-- Inline progress -->
                     <div class="inline-progress hidden" id="ren-progress">
@@ -764,36 +995,137 @@
                         </div>
                     </div>
 
-                    <!-- Preview Card -->
-                    <div class="card glass preview-card" style="min-height: 400px;">
-                        <div class="card-header">
-                            <h2>Rename Preview</h2>
-                            <span class="info-tag" id="ren-file-count">0 files loaded</span>
-                        </div>
+                    <!-- Session Auto-Save Banner (1 Hour Cache) -->
+                    <div id="ren-session-banner" class="hidden" style="background: rgba(124, 58, 237, 0.05); border: 1px solid rgba(124, 58, 237, 0.18); border-radius: 10px; padding: 0.5rem 0.85rem; display: flex; justify-content: space-between; align-items: center; font-size: 0.74rem; color: var(--text-primary);">
+                        <span style="display: flex; align-items: center; gap: 6px;">
+                            <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="color: var(--primary);"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                            <strong>Session Auto-Saved:</strong> Files will stay saved for 1 hour across page reloads.
+                        </span>
+                        <span id="ren-session-timer" style="color: var(--primary); font-weight: 700; font-size: 0.72rem;"></span>
+                    </div>
 
-                        <!-- Empty State -->
-                        <div class="empty-state" id="ren-empty-state">
+                    <!-- Empty State -->
+                    <div class="card glass preview-card" id="ren-empty-state" style="min-height: 380px;">
+                        <div class="empty-state">
                             <div class="empty-icon">
                                 <svg viewBox="0 0 24 24" width="52" height="52" stroke="currentColor" stroke-width="1.2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
                             </div>
                             <h3>No files loaded</h3>
-                            <p>Upload Excel or CSV files to preview their renamed names.</p>
+                            <p>Upload Excel or CSV files in P2 (Order) or Column G (Tax) upload boxes on the left to start.</p>
+                        </div>
+                    </div>
+
+                    <!-- Staged State (Files loaded, ready to be renamed upon clicking button) -->
+                    <div class="card glass preview-card hidden" id="ren-staged-state" style="min-height: 320px; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 2rem;">
+                        <div style="width: 56px; height: 56px; border-radius: 50%; background: rgba(124, 58, 237, 0.1); color: var(--primary); display: flex; align-items: center; justify-content: center; margin-bottom: 1rem;">
+                            <svg viewBox="0 0 24 24" width="28" height="28" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path><line x1="12" y1="11" x2="12" y2="17"></line><line x1="9" y1="14" x2="15" y2="14"></line></svg>
+                        </div>
+                        <h3 style="font-size: 1.1rem; font-weight: 700; color: var(--text-primary); margin-bottom: 0.4rem;" id="ren-staged-title">Files Loaded & Ready</h3>
+                        <p style="font-size: 0.8rem; color: var(--text-secondary); max-width: 420px; margin-bottom: 1.2rem;" id="ren-staged-desc">Click the <strong>"Rename All Files"</strong> button on the left to process all uploaded files.</p>
+                        <button class="btn btn-primary btn-glow" id="btn-rename-run-trigger" style="padding: 0.55rem 1.4rem; font-size: 0.88rem; font-weight: 600;">
+                            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px;"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                            Process & Rename All Files
+                        </button>
+                    </div>
+
+                    <!-- Results Container -->
+                    <div id="ren-results-container" class="hidden" style="display: flex; flex-direction: column; gap: 1rem;">
+                        
+                        <!-- Top Summary Bar -->
+                        <div class="card glass" style="padding: 0.65rem 0.9rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.6rem; border-left: 4px solid var(--primary);">
+                            <div style="display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;">
+                                <h3 style="font-size: 0.9rem; font-weight: 700; color: var(--text-primary); margin: 0;">Renamed Output Summary</h3>
+                                <span class="info-tag" id="ren-total-summary-tag">0 files</span>
+                                <span id="ren-unmatched-summary-tag" class="badge hidden" style="background: rgba(220, 38, 38, 0.12); color: #dc2626; border: 1px solid rgba(220, 38, 38, 0.25); font-size: 0.68rem;">0 Need Prefix</span>
+                            </div>
+                            <button class="btn btn-primary btn-glow" id="btn-download-all-zip" style="padding: 0.35rem 0.85rem; font-size: 0.78rem;">
+                                <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                                Download All ZIP
+                            </button>
                         </div>
 
-                        <!-- Table Container -->
-                        <div class="table-container hidden" id="ren-table-container">
-                            <table class="preview-table">
-                                <thead>
-                                    <tr>
-                                        <th style="width: 50px;">#</th>
-                                        <th>Original Name</th>
-                                        <th>Rename Code</th>
-                                        <th>New Filename</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="ren-preview-tbody"></tbody>
-                            </table>
+                        <!-- 1. Order Files Card (P2 Method) -->
+                        <div class="card glass" id="card-order-files" style="border-left: 4px solid var(--primary);">
+                            <div class="card-header" style="padding: 0.65rem 0.9rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+                                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                    <h3 style="font-size: 0.88rem; font-weight: 700; color: var(--text-primary); margin: 0; display: flex; align-items: center; gap: 6px;">
+                                        📦 Order Files
+                                    </h3>
+                                    <span class="badge badge-od" id="order-files-count-badge" style="font-size: 0.68rem;">0 files</span>
+                                    <span class="badge hidden" id="order-unmatched-badge" style="background: rgba(220,38,38,0.12); color: #dc2626; border: 1px solid rgba(220,38,38,0.25); font-size: 0.65rem;">0 Need Prefix</span>
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;">
+                                    <button class="btn btn-secondary" id="btn-order-fullview" style="padding: 0.28rem 0.6rem; font-size: 0.72rem;" title="Full View Modal">
+                                        <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"></path><path d="M9 21H3v-6"></path><path d="M21 3l-7 7"></path><path d="M3 21l7-7"></path></svg>
+                                        Full View
+                                    </button>
+                                    <button class="btn btn-secondary" id="btn-move-to-merge" style="padding: 0.28rem 0.65rem; font-size: 0.72rem; color: var(--primary); font-weight: 700; border-color: rgba(124, 58, 237, 0.25);" title="Transfer files directly to Merge File tab">
+                                        <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"></polyline><line x1="4" y1="20" x2="21" y2="3"></line><polyline points="21 16 21 21 16 21"></polyline><line x1="15" y1="15" x2="21" y2="21"></line><line x1="4" y1="4" x2="9" y2="9"></line></svg>
+                                        Move to Merge
+                                    </button>
+                                    <button class="btn btn-primary" id="btn-download-order-zip" style="padding: 0.28rem 0.65rem; font-size: 0.72rem;" title="Download only Order files ZIP">
+                                        <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                                        Download ZIP
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="table-container" style="max-height: 240px; overflow-y: auto; margin: 0; padding: 0;">
+                                <table class="preview-table" style="font-size: 0.74rem; width: 100%;">
+                                    <thead>
+                                        <tr>
+                                            <th style="width: 35px;">#</th>
+                                            <th>Original File Name</th>
+                                            <th style="width: 105px;">Prefix Code</th>
+                                            <th>Renamed Filename</th>
+                                            <th style="width: 105px; text-align: center;">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="tbody-order-files"></tbody>
+                                </table>
+                            </div>
                         </div>
+
+                        <!-- 2. Tax Files Card (Column G Method) -->
+                        <div class="card glass" id="card-tax-files" style="border-left: 4px solid #059669;">
+                            <div class="card-header" style="padding: 0.65rem 0.9rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+                                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                    <h3 style="font-size: 0.88rem; font-weight: 700; color: var(--text-primary); margin: 0; display: flex; align-items: center; gap: 6px;">
+                                        📊 Tax Files
+                                    </h3>
+                                    <span class="badge badge-dt" id="tax-files-count-badge" style="font-size: 0.68rem;">0 files</span>
+                                    <span class="badge hidden" id="tax-unmatched-badge" style="background: rgba(220,38,38,0.12); color: #dc2626; border: 1px solid rgba(220,38,38,0.25); font-size: 0.65rem;">0 Need Prefix</span>
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;">
+                                    <button class="btn btn-secondary" id="btn-tax-fullview" style="padding: 0.28rem 0.6rem; font-size: 0.72rem;" title="Full View Modal">
+                                        <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"></path><path d="M9 21H3v-6"></path><path d="M21 3l-7 7"></path><path d="M3 21l7-7"></path></svg>
+                                        Full View
+                                    </button>
+                                    <button class="btn btn-secondary" id="btn-move-to-folder-create" style="padding: 0.28rem 0.65rem; font-size: 0.72rem; color: #059669; font-weight: 700; border-color: rgba(5, 150, 105, 0.25);" title="Transfer files directly to Folder Create tab">
+                                        <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+                                        Move to Folder Create
+                                    </button>
+                                    <button class="btn btn-primary" id="btn-download-tax-zip" style="padding: 0.28rem 0.65rem; font-size: 0.72rem; background: #059669; border-color: #059669;" title="Download only Tax files ZIP">
+                                        <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                                        Download ZIP
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="table-container" style="max-height: 240px; overflow-y: auto; margin: 0; padding: 0;">
+                                <table class="preview-table" style="font-size: 0.74rem; width: 100%;">
+                                    <thead>
+                                        <tr>
+                                            <th style="width: 35px;">#</th>
+                                            <th>Original File Name</th>
+                                            <th style="width: 105px;">Prefix Code</th>
+                                            <th>Renamed Filename</th>
+                                            <th style="width: 105px; text-align: center;">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="tbody-tax-files"></tbody>
+                                </table>
+                            </div>
+                        </div>
+
                     </div>
                 </section>
             </div>
@@ -847,7 +1179,7 @@
                     </button>
                 </section>
 
-                <!-- Right Panel: Preview -->
+                <!-- Right Panel: Preview & Actions -->
                 <section class="panel-right">
                     <!-- Inline progress -->
                     <div class="inline-progress hidden" id="mrg-progress">
@@ -860,11 +1192,36 @@
                         </div>
                     </div>
 
+                    <!-- Session Auto-Save Banner (1 Hour Cache) -->
+                    <div id="mrg-session-banner" class="hidden" style="background: rgba(124, 58, 237, 0.05); border: 1px solid rgba(124, 58, 237, 0.18); border-radius: 10px; padding: 0.5rem 0.85rem; display: flex; justify-content: space-between; align-items: center; font-size: 0.74rem; color: var(--text-primary); margin-bottom: 0.75rem;">
+                        <span style="display: flex; align-items: center; gap: 6px;">
+                            <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="color: var(--primary);"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                            <strong>Session Auto-Saved:</strong> Merged files will stay saved for 1 hour across page reloads.
+                        </span>
+                        <span id="mrg-session-timer" style="color: var(--primary); font-weight: 700; font-size: 0.72rem;"></span>
+                    </div>
+
                     <!-- Preview Card -->
-                    <div class="card glass preview-card" style="min-height: 400px;">
-                        <div class="card-header">
-                            <h2>Merge Preview</h2>
-                            <span class="info-tag" id="mrg-group-count">0 groups detected</span>
+                    <div class="card glass preview-card" style="min-height: 400px; border-left: 4px solid var(--primary);">
+                        <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem; padding: 0.75rem 1rem;">
+                            <div style="display: flex; align-items: center; gap: 0.6rem;">
+                                <h2 style="font-size: 0.95rem; margin: 0; font-weight: 700;">Merge Preview</h2>
+                                <span class="info-tag" id="mrg-group-count">0 groups detected</span>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;" id="mrg-header-actions" class="hidden">
+                                <button class="btn btn-secondary" id="btn-mrg-fullview" style="padding: 0.28rem 0.6rem; font-size: 0.72rem;" title="Full View Modal">
+                                    <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"></path><path d="M9 21H3v-6"></path><path d="M21 3l-7 7"></path><path d="M3 21l7-7"></path></svg>
+                                    Full View
+                                </button>
+                                <button class="btn btn-secondary" id="btn-mrg-move-to-folder" style="padding: 0.28rem 0.65rem; font-size: 0.72rem; color: #059669; font-weight: 700; border-color: rgba(5, 150, 105, 0.25);" title="Transfer merged files directly to Folder Create tab">
+                                    <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+                                    Move to Folder Create
+                                </button>
+                                <button class="btn btn-primary btn-glow" id="btn-mrg-download-zip" style="padding: 0.28rem 0.65rem; font-size: 0.72rem;" title="Download Merged Files">
+                                    <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                                    Download Merged
+                                </button>
+                            </div>
                         </div>
 
                         <!-- Empty State -->
@@ -873,18 +1230,19 @@
                                 <svg viewBox="0 0 24 24" width="52" height="52" stroke="currentColor" stroke-width="1.2" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"></polyline><line x1="4" y1="20" x2="21" y2="3"></line><polyline points="21 16 21 21 16 21"></polyline><line x1="15" y1="15" x2="21" y2="21"></line><line x1="4" y1="4" x2="9" y2="9"></line></svg>
                             </div>
                             <h3>No files loaded</h3>
-                            <p>Upload files to see automatically grouped merge outputs.</p>
+                            <p>Upload files or move from Rename tab to see automatically grouped merge outputs.</p>
                         </div>
 
                         <!-- Table Container -->
                         <div class="table-container hidden" id="mrg-table-container">
-                            <table class="preview-table">
+                            <table class="preview-table" style="font-size: 0.75rem; width: 100%;">
                                 <thead>
                                     <tr>
-                                        <th style="width: 50px;">#</th>
-                                        <th>Group Key</th>
+                                        <th style="width: 40px;">#</th>
+                                        <th style="width: 100px;">Group Key</th>
                                         <th>Source Files</th>
                                         <th>Output Filename</th>
+                                        <th style="width: 110px; text-align: center;">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody id="mrg-preview-tbody"></tbody>
@@ -1179,26 +1537,350 @@
     <!-- Notification Toast -->
     <div id="toast" class="toast hidden"></div>
 
-    <!-- Sheet Inspector Modal -->
+    <!-- Sheet Inspector Modal (Full Page View) -->
     <div id="inspector-modal" class="modal hidden">
-        <div class="modal-content glass">
-            <div class="modal-header">
-                <h3 id="modal-title" style="font-size: 1.05rem; font-weight: 600; color: var(--text-primary);">Inspect File Contents</h3>
-                <button class="btn-action" id="btn-close-modal" style="width: 28px; height: 28px;">
-                    <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        <div class="modal-content glass" style="max-width: 98vw; width: 98vw; height: 95vh; max-height: 95vh; border-radius: 14px; display: flex; flex-direction: column; padding: 0; margin: auto; overflow: hidden;">
+            <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 1.25rem; border-bottom: 1px solid var(--panel-border); flex-shrink: 0;">
+                <h3 id="modal-title" style="font-size: 1.05rem; font-weight: 700; color: var(--text-primary);">Inspect File Contents</h3>
+                <button class="btn-action" id="btn-close-modal" style="width: 32px; height: 32px;" title="Close Inspector">
+                    <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                 </button>
             </div>
-            <div class="modal-body" style="padding: 1rem;">
-                <p style="font-size: 0.72rem; color: var(--text-secondary); margin-bottom: 0.6rem;">Showing first 50 rows. Highlighted and formatted cells are rendered dynamically below.</p>
-                <div class="table-container" style="max-height: 380px; overflow: auto; background: rgba(124, 58, 237, 0.02); border-radius: 8px; border: 1px solid rgba(0, 0, 0, 0.04);">
-                    <table class="preview-table" id="inspector-table" style="font-size: 0.75rem; border-collapse: collapse; white-space: nowrap; width: 100%;">
-                        <thead id="inspector-thead" style="position: sticky; top: 0; background: white; z-index: 10;">
+            <div class="modal-body" style="padding: 0.85rem 1.25rem; display: flex; flex-direction: column; flex: 1; overflow: hidden; gap: 0.5rem;">
+                <p style="font-size: 0.75rem; color: var(--text-secondary); margin: 0; flex-shrink: 0;">Showing first 50 rows. Highlighted and formatted cells are rendered dynamically below.</p>
+                <div class="table-container" style="flex: 1; height: 100%; max-height: calc(95vh - 120px); overflow: auto; background: white; border-radius: 8px; border: 1px solid rgba(0, 0, 0, 0.08); margin: 0;">
+                    <table class="preview-table" id="inspector-table" style="font-size: 0.76rem; border-collapse: collapse; white-space: nowrap; width: 100%;">
+                        <thead id="inspector-thead" style="position: sticky; top: 0; background: #f8fafc; z-index: 10; box-shadow: 0 1px 3px rgba(0,0,0,0.06);">
                             <!-- Populated dynamically -->
                         </thead>
                         <tbody id="inspector-tbody">
                             <!-- Populated dynamically -->
                         </tbody>
                     </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Prefix Modal -->
+    <div id="edit-prefix-modal" class="modal hidden">
+        <div class="modal-content glass" style="max-width: 440px; border-radius: 16px;">
+            <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; padding: 0.85rem 1.1rem; border-bottom: 1px solid var(--panel-border);">
+                <h3 id="edit-prefix-title" style="font-size: 0.95rem; font-weight: 700; color: var(--text-primary); margin: 0; display: flex; align-items: center; gap: 6px;">
+                    ✏️ Edit Prefix Code
+                </h3>
+                <button class="btn-action" id="btn-close-edit-prefix" style="width: 28px; height: 28px;">
+                    <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+            </div>
+            <div class="modal-body" style="padding: 1.1rem; display: flex; flex-direction: column; gap: 0.85rem;">
+                <div>
+                    <label style="font-size: 0.72rem; color: var(--text-secondary); display: block; margin-bottom: 0.25rem;">Original File Name:</label>
+                    <div id="edit-prefix-filename" style="font-size: 0.75rem; font-family: monospace; color: var(--text-primary); word-break: break-all; background: rgba(0,0,0,0.03); padding: 0.5rem; border-radius: 6px; border: 1px solid rgba(0,0,0,0.06); font-weight: 600;"></div>
+                </div>
+                <div>
+                    <label style="font-size: 0.75rem; font-weight: 600; color: var(--text-primary); display: block; margin-bottom: 0.35rem;">Enter Party Prefix Code (e.g. 157, 139, 225):</label>
+                    <input type="text" id="edit-prefix-input" placeholder="e.g. 157" class="select-field" style="width: 100%; box-sizing: border-box; font-size: 0.92rem; font-weight: 700; color: var(--primary);">
+                    <p style="font-size: 0.68rem; color: var(--text-secondary); margin-top: 0.3rem;">Prefix lagate hi filename <code>&lt;prefix&gt;-filename.csv</code> ban jayega aur status Green ho jayega.</p>
+                </div>
+                <div style="display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 0.4rem;">
+                    <button type="button" class="btn btn-secondary" id="btn-cancel-edit-prefix" style="padding: 0.4rem 0.8rem;">Cancel</button>
+                    <button type="button" class="btn btn-primary btn-glow" id="btn-save-edit-prefix" style="padding: 0.4rem 1rem;">Save Prefix</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Full View Modal for Rename Files (Full Page View) -->
+    <div id="ren-fullview-modal" class="modal hidden">
+        <div class="modal-content glass" style="max-width: 98vw; width: 98vw; height: 95vh; max-height: 95vh; border-radius: 14px; display: flex; flex-direction: column; padding: 0; margin: auto; overflow: hidden;">
+            <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 1.25rem; border-bottom: 1px solid var(--panel-border); flex-shrink: 0;">
+                <div style="display: flex; align-items: center; gap: 0.75rem;">
+                    <h3 id="ren-fullview-title" style="font-size: 1.05rem; font-weight: 700; color: var(--text-primary); margin: 0;">Full View Files</h3>
+                    <span class="info-tag" id="ren-fullview-count" style="font-size: 0.75rem;">0 files</span>
+                </div>
+                <button class="btn-action" id="btn-close-ren-fullview" style="width: 32px; height: 32px;" title="Close Full View">
+                    <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+            </div>
+            <div class="modal-body" style="padding: 0.85rem 1.25rem; display: flex; flex-direction: column; gap: 0.6rem; flex: 1; overflow: hidden;">
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; flex-wrap: wrap; flex-shrink: 0;">
+                    <p style="font-size: 0.75rem; color: var(--text-secondary); margin: 0;">Click on filename or 👁️ to view Excel data (first 50 rows). Red rows require manual prefix edit ✏️.</p>
+                    <div class="search-box" style="max-width: 320px; width: 100%;">
+                        <input type="text" id="ren-fullview-search" placeholder="Search file or prefix code..." style="font-size: 0.8rem; padding: 0.4rem 0.75rem;">
+                    </div>
+                </div>
+                <div class="table-container" style="flex: 1; height: 100%; max-height: calc(95vh - 130px); overflow-y: auto; background: white; border-radius: 8px; border: 1px solid rgba(0,0,0,0.06); margin: 0;">
+                    <table class="preview-table" style="font-size: 0.76rem; width: 100%;">
+                        <thead style="position: sticky; top: 0; background: #f8fafc; z-index: 5; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                            <tr>
+                                <th style="width: 45px;">#</th>
+                                <th>Original File Name</th>
+                                <th style="width: 120px;">Prefix Code</th>
+                                <th>Renamed Filename</th>
+                                <th style="width: 125px; text-align: center;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tbody-fullview-files"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Full View Modal for Merge Files (Full Page View) -->
+    <div id="mrg-fullview-modal" class="modal hidden">
+        <div class="modal-content glass" style="max-width: 98vw; width: 98vw; height: 95vh; max-height: 95vh; border-radius: 14px; display: flex; flex-direction: column; padding: 0; margin: auto; overflow: hidden;">
+            <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 1.25rem; border-bottom: 1px solid var(--panel-border); flex-shrink: 0;">
+                <div style="display: flex; align-items: center; gap: 0.75rem;">
+                    <h3 id="mrg-fullview-title" style="font-size: 1.05rem; font-weight: 700; color: var(--text-primary); margin: 0;">📦 Merged Groups — Full View</h3>
+                    <span class="info-tag" id="mrg-fullview-count" style="font-size: 0.75rem;">0 groups</span>
+                </div>
+                <button class="btn-action" id="btn-close-mrg-fullview" style="width: 32px; height: 32px;" title="Close Full View">
+                    <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+            </div>
+            <div class="modal-body" style="padding: 0.85rem 1.25rem; display: flex; flex-direction: column; gap: 0.6rem; flex: 1; overflow: hidden;">
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; flex-wrap: wrap; flex-shrink: 0;">
+                    <p style="font-size: 0.75rem; color: var(--text-secondary); margin: 0;">View grouped files, edit group keys ✏️ or inspect first 50 rows 👁️.</p>
+                    <div class="search-box" style="max-width: 320px; width: 100%;">
+                        <input type="text" id="mrg-fullview-search" placeholder="Search group key or file name..." style="font-size: 0.8rem; padding: 0.4rem 0.75rem;">
+                    </div>
+                </div>
+                <div class="table-container" style="flex: 1; height: 100%; max-height: calc(95vh - 130px); overflow-y: auto; background: white; border-radius: 8px; border: 1px solid rgba(0,0,0,0.06); margin: 0;">
+                    <table class="preview-table" style="font-size: 0.76rem; width: 100%;">
+                        <thead style="position: sticky; top: 0; background: #f8fafc; z-index: 5; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                            <tr>
+                                <th style="width: 45px;">#</th>
+                                <th style="width: 110px;">Group Key</th>
+                                <th>Source Files</th>
+                                <th>Output Filename</th>
+                                <th style="width: 125px; text-align: center;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tbody-mrg-fullview-files"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Group Key Modal (Merge Tab) -->
+    <div id="edit-group-key-modal" class="modal hidden">
+        <div class="modal-content glass" style="max-width: 440px; border-radius: 16px;">
+            <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; padding: 0.85rem 1.1rem; border-bottom: 1px solid var(--panel-border);">
+                <h3 style="font-size: 0.95rem; font-weight: 700; color: var(--text-primary); margin: 0; display: flex; align-items: center; gap: 6px;">
+                    ✏️ Edit Group Key
+                </h3>
+                <button class="btn-action" id="btn-close-edit-group-key" style="width: 28px; height: 28px;">
+                    <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+            </div>
+            <div class="modal-body" style="padding: 1.1rem; display: flex; flex-direction: column; gap: 0.85rem;">
+                <div>
+                    <label style="font-size: 0.72rem; color: var(--text-secondary); display: block; margin-bottom: 0.25rem;">Current Group Key:</label>
+                    <div id="edit-group-key-current" style="font-size: 0.85rem; font-family: monospace; color: var(--primary); font-weight: 700; background: rgba(124, 58, 237, 0.06); padding: 0.4rem 0.6rem; border-radius: 6px; border: 1px solid rgba(124, 58, 237, 0.15);"></div>
+                </div>
+                <div>
+                    <label style="font-size: 0.75rem; font-weight: 600; color: var(--text-primary); display: block; margin-bottom: 0.35rem;">Enter New Group Key (e.g. 157, 139, 225):</label>
+                    <input type="text" id="edit-group-key-input" placeholder="e.g. 157" class="select-field" style="width: 100%; box-sizing: border-box; font-size: 0.92rem; font-weight: 700; color: var(--primary);">
+                    <p style="font-size: 0.68rem; color: var(--text-secondary); margin-top: 0.3rem;">Is group ke sabhi files ka key update ho jayega aur automatically regroup ho jayega.</p>
+                </div>
+                <div style="display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 0.4rem;">
+                    <button type="button" class="btn btn-secondary" id="btn-cancel-edit-group-key" style="padding: 0.4rem 0.8rem;">Cancel</button>
+                    <button type="button" class="btn btn-primary btn-glow" id="btn-save-edit-group-key" style="padding: 0.4rem 1rem;">Save Group Key</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Full View Modal for Separate Files (Full Page View) -->
+    <div id="sep-fullview-modal" class="modal hidden">
+        <div class="modal-content glass" style="max-width: 98vw; width: 98vw; height: 95vh; max-height: 95vh; border-radius: 14px; display: flex; flex-direction: column; padding: 0; margin: auto; overflow: hidden;">
+            <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 1.25rem; border-bottom: 1px solid var(--panel-border); flex-shrink: 0;">
+                <div style="display: flex; align-items: center; gap: 0.75rem;">
+                    <h3 id="sep-fullview-title" style="font-size: 1.05rem; font-weight: 700; color: var(--text-primary); margin: 0;">✂️ Separate Files — Full View</h3>
+                    <span class="info-tag" id="sep-fullview-count" style="font-size: 0.75rem;">0 unique values</span>
+                </div>
+                <button class="btn-action" id="btn-close-sep-fullview" style="width: 32px; height: 32px;" title="Close Full View">
+                    <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+            </div>
+            <div class="modal-body" style="padding: 0.85rem 1.25rem; display: flex; flex-direction: column; gap: 0.6rem; flex: 1; overflow: hidden;">
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; flex-wrap: wrap; flex-shrink: 0;">
+                    <div style="display: flex; align-items: center; gap: 0.4rem;">
+                        <button class="tab-btn active sep-filter-btn" data-category="all" style="padding: 0.25rem 0.6rem; font-size: 0.74rem;">All Categories</button>
+                        <button class="tab-btn sep-filter-btn" data-category="simple" style="padding: 0.25rem 0.6rem; font-size: 0.74rem;">📦 Simple</button>
+                        <button class="tab-btn sep-filter-btn" data-category="details" style="padding: 0.25rem 0.6rem; font-size: 0.74rem;">📄 Details</button>
+                        <button class="tab-btn sep-filter-btn" data-category="summary" style="padding: 0.25rem 0.6rem; font-size: 0.74rem;">📊 Summary</button>
+                        <button class="tab-btn sep-filter-btn" data-category="tax" style="padding: 0.25rem 0.6rem; font-size: 0.74rem;">🏷️ Tax Split</button>
+                    </div>
+                    <div class="search-box" style="max-width: 300px; width: 100%;">
+                        <input type="text" id="sep-fullview-search" placeholder="Search unique value or output filename..." style="font-size: 0.8rem; padding: 0.4rem 0.75rem;">
+                    </div>
+                </div>
+                <div class="table-container" style="flex: 1; height: 100%; max-height: calc(95vh - 130px); overflow-y: auto; background: white; border-radius: 8px; border: 1px solid rgba(0,0,0,0.06); margin: 0;">
+                    <table class="preview-table" style="font-size: 0.76rem; width: 100%;">
+                        <thead style="position: sticky; top: 0; background: #f8fafc; z-index: 5; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                            <tr>
+                                <th style="width: 45px;">#</th>
+                                <th style="width: 110px;">Category</th>
+                                <th>Unique Value</th>
+                                <th style="width: 100px;">Row Count</th>
+                                <th>Output Filename</th>
+                                <th style="width: 90px; text-align: center;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tbody-sep-fullview-files"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hidden input for adding files directly to a specific folder -->
+    <input type="file" id="fld-manual-file-input" accept=".xlsx,.xls,.csv" class="hidden-input" style="display: none;">
+
+    <!-- Full View Modal for Folder Create (Full Page View) -->
+    <div id="fld-fullview-modal" class="modal hidden">
+        <div class="modal-content glass" style="max-width: 98vw; width: 98vw; height: 95vh; max-height: 95vh; border-radius: 14px; display: flex; flex-direction: column; padding: 0; margin: auto; overflow: hidden;">
+            <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 1.25rem; border-bottom: 1px solid var(--panel-border); flex-shrink: 0;">
+                <div style="display: flex; align-items: center; gap: 0.75rem;">
+                    <h3 style="font-size: 1.05rem; font-weight: 700; color: var(--text-primary); margin: 0;">📁 Folder Grouping — Full View</h3>
+                    <span class="info-tag" id="fld-fullview-count" style="font-size: 0.75rem;">0 folders</span>
+                </div>
+                <button class="btn-action" id="btn-close-fld-fullview" style="width: 32px; height: 32px;" title="Close Full View">
+                    <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+            </div>
+            <div class="modal-body" style="padding: 0.85rem 1.25rem; display: flex; flex-direction: column; gap: 0.6rem; flex: 1; overflow: hidden;">
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; flex-wrap: wrap; flex-shrink: 0;">
+                    <div style="display: flex; align-items: center; gap: 0.4rem;">
+                        <button class="tab-btn active fld-filter-btn" data-filter="all" style="padding: 0.25rem 0.6rem; font-size: 0.74rem;">All Folders</button>
+                        <button class="tab-btn fld-filter-btn" data-filter="complete" style="padding: 0.25rem 0.6rem; font-size: 0.74rem; color: #10b981;">✅ Complete Folders (3+)</button>
+                        <button class="tab-btn fld-filter-btn" data-filter="missing" style="padding: 0.25rem 0.6rem; font-size: 0.74rem; color: #ef4444;">⚠️ Missing / Error Folders</button>
+                    </div>
+                    <div class="search-box" style="max-width: 300px; width: 100%;">
+                        <input type="text" id="fld-fullview-search" placeholder="Search folder prefix or file name..." style="font-size: 0.8rem; padding: 0.4rem 0.75rem;">
+                    </div>
+                </div>
+                <div class="table-container" style="flex: 1; height: 100%; max-height: calc(95vh - 130px); overflow-y: auto; background: white; border-radius: 8px; border: 1px solid rgba(0,0,0,0.06); margin: 0;">
+                    <table class="preview-table" style="font-size: 0.76rem; width: 100%;">
+                        <thead style="position: sticky; top: 0; background: #f8fafc; z-index: 5; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                            <tr>
+                                <th style="width: 35px;"></th>
+                                <th style="width: 40px;">#</th>
+                                <th>Folder Name (Prefix)</th>
+                                <th style="width: 90px;">File Count</th>
+                                <th style="width: 170px;">Status</th>
+                                <th>Files Preview</th>
+                                <th style="width: 110px; text-align: center;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tbody-fld-fullview-files"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Copy / Paste File to Target Folders Modal -->
+    <div id="copy-file-to-folders-modal" class="modal hidden">
+        <div class="modal-content glass" style="max-width: 520px; border-radius: 16px;">
+            <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; padding: 0.85rem 1.15rem; border-bottom: 1px solid var(--panel-border);">
+                <h3 style="font-size: 0.95rem; font-weight: 700; color: var(--text-primary); margin: 0; display: flex; align-items: center; gap: 6px;">
+                    📋 Copy & Paste File into Folders
+                </h3>
+                <button class="btn-action" id="btn-close-copy-modal" style="width: 28px; height: 28px;">
+                    <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+            </div>
+            <div class="modal-body" style="padding: 1.1rem; display: flex; flex-direction: column; gap: 0.75rem;">
+                <div>
+                    <label style="font-size: 0.72rem; color: var(--text-secondary); display: block; margin-bottom: 0.2rem;">Source File to Copy:</label>
+                    <div id="copy-source-file-display" style="font-size: 0.78rem; font-family: monospace; color: var(--primary); font-weight: 700; background: rgba(124, 58, 237, 0.06); padding: 0.45rem 0.65rem; border-radius: 6px; border: 1px solid rgba(124, 58, 237, 0.15); word-break: break-all;"></div>
+                </div>
+
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.2rem;">
+                    <label style="font-size: 0.75rem; font-weight: 700; color: var(--text-primary); margin: 0;">Target Missing Folders:</label>
+                    <div style="display: flex; gap: 0.35rem;">
+                        <button type="button" class="btn btn-secondary" id="btn-copy-select-all" style="padding: 0.2rem 0.6rem; font-size: 0.7rem; color: #dc2626; font-weight: 700;">Select All Missing (⚠️)</button>
+                        <button type="button" class="btn btn-secondary" id="btn-copy-deselect-all" style="padding: 0.2rem 0.5rem; font-size: 0.7rem;">Deselect All</button>
+                    </div>
+                </div>
+
+                <div class="search-box" style="width: 100%;">
+                    <input type="text" id="copy-folders-search" placeholder="Search target folder name..." style="font-size: 0.76rem; padding: 0.35rem 0.65rem;">
+                </div>
+
+                <div id="copy-target-folders-list" style="max-height: 200px; overflow-y: auto; border: 1px solid var(--panel-border); border-radius: 8px; padding: 0.4rem; display: flex; flex-direction: column; gap: 0.3rem; background: #fafafa;">
+                    <!-- Populated dynamically with checkboxes -->
+                </div>
+
+                <div style="display: flex; align-items: center; gap: 0.4rem; margin-top: 0.2rem;">
+                    <input type="checkbox" id="copy-auto-prefix-checkbox" checked style="accent-color: var(--primary); cursor: pointer;">
+                    <label for="copy-auto-prefix-checkbox" style="font-size: 0.72rem; color: var(--text-primary); cursor: pointer;">
+                        Auto-update prefix for target folder (e.g. <code>139-File.xlsx</code> becomes <code>150-File.xlsx</code> in folder 150)
+                    </label>
+                </div>
+
+                <div style="display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 0.5rem;">
+                    <button type="button" class="btn btn-secondary" id="btn-cancel-copy-modal" style="padding: 0.4rem 0.85rem;">Cancel</button>
+                    <button type="button" class="btn btn-primary btn-glow" id="btn-confirm-copy-paste" style="padding: 0.4rem 1.1rem; font-weight: 700;">📋 Paste into Selected Folders</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Folder File Name Modal -->
+    <div id="edit-fld-file-modal" class="modal hidden">
+        <div class="modal-content glass" style="max-width: 440px; border-radius: 16px;">
+            <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; padding: 0.85rem 1.1rem; border-bottom: 1px solid var(--panel-border);">
+                <h3 style="font-size: 0.95rem; font-weight: 700; color: var(--text-primary); margin: 0; display: flex; align-items: center; gap: 6px;">
+                    ✏️ Edit File Name
+                </h3>
+                <button class="btn-action" id="btn-close-edit-fld-file" style="width: 28px; height: 28px;">
+                    <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+            </div>
+            <div class="modal-body" style="padding: 1.1rem; display: flex; flex-direction: column; gap: 0.85rem;">
+                <div>
+                    <label style="font-size: 0.72rem; color: var(--text-secondary); display: block; margin-bottom: 0.25rem;">Current File Name:</label>
+                    <div id="edit-fld-file-current" style="font-size: 0.78rem; font-family: monospace; color: var(--text-primary); word-break: break-all; background: rgba(0,0,0,0.03); padding: 0.5rem; border-radius: 6px; border: 1px solid rgba(0,0,0,0.06); font-weight: 600;"></div>
+                </div>
+                <div>
+                    <label style="font-size: 0.75rem; font-weight: 600; color: var(--text-primary); display: block; margin-bottom: 0.35rem;">Enter New File Name:</label>
+                    <input type="text" id="edit-fld-file-input" class="select-field" style="width: 100%; box-sizing: border-box; font-size: 0.85rem; font-family: monospace; font-weight: 600; color: var(--primary);">
+                </div>
+                <div style="display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 0.4rem;">
+                    <button type="button" class="btn btn-secondary" id="btn-cancel-edit-fld-file" style="padding: 0.4rem 0.8rem;">Cancel</button>
+                    <button type="button" class="btn btn-primary btn-glow" id="btn-save-edit-fld-file" style="padding: 0.4rem 1rem;">Save File Name</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Global Custom Delete Confirmation Modal -->
+    <div id="confirm-delete-modal" class="modal hidden">
+        <div class="modal-content glass" style="max-width: 420px; border-radius: 16px; box-shadow: 0 25px 60px rgba(0,0,0,0.3); border: 1px solid rgba(220, 38, 38, 0.2);">
+            <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; padding: 0.85rem 1.1rem; border-bottom: 1px solid rgba(220, 38, 38, 0.1); background: rgba(220, 38, 38, 0.04);">
+                <h3 style="font-size: 0.95rem; font-weight: 700; color: #dc2626; margin: 0; display: flex; align-items: center; gap: 6px;">
+                    <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+                    Confirm Delete
+                </h3>
+                <button class="btn-action" id="btn-close-confirm-delete" style="width: 28px; height: 28px;">
+                    <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+            </div>
+            <div class="modal-body" style="padding: 1.2rem; display: flex; flex-direction: column; gap: 0.85rem; text-align: center;">
+                <div style="width: 52px; height: 52px; border-radius: 50%; background: rgba(220, 38, 38, 0.1); color: #dc2626; display: flex; align-items: center; justify-content: center; margin: 0 auto;">
+                    <svg viewBox="0 0 24 24" width="26" height="26" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+                </div>
+                <h4 style="font-size: 0.95rem; font-weight: 700; color: var(--text-primary); margin: 0;" id="confirm-delete-title">Are you sure you want to delete?</h4>
+                <p style="font-size: 0.78rem; color: var(--text-secondary); margin: 0; line-height: 1.4;" id="confirm-delete-desc">This item will be permanently removed.</p>
+                <div style="display: flex; gap: 0.6rem; justify-content: center; margin-top: 0.6rem;">
+                    <button type="button" class="btn btn-secondary" id="btn-cancel-confirm-delete" style="padding: 0.45rem 1.2rem; font-size: 0.82rem;">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="btn-action-confirm-delete" style="padding: 0.45rem 1.3rem; font-size: 0.82rem; background: #dc2626; border-color: #dc2626; font-weight: 700;">Yes, Delete</button>
                 </div>
             </div>
         </div>
