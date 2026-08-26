@@ -3508,8 +3508,14 @@ async function saveRenameSessionToStorage() {
         const serializedFiles = renUploadedFiles.map(f => ({
             id: f.id,
             name: f.name,
+            originalSourceFileName: f.originalSourceFileName || f.name,
             ext: f.ext,
             methodType: f.methodType,
+            warehouseId: f.warehouseId || null,
+            isSplit: !!f.isSplit,
+            splitIndex: f.splitIndex || null,
+            totalSplits: f.totalSplits || 1,
+            rowCount: f.rowCount || 0,
             p2Value: f.p2Value,
             colGValue: f.colGValue,
             renameCode: f.renameCode,
@@ -3565,9 +3571,15 @@ async function loadRenameSessionFromStorage() {
                     return {
                         id: f.id,
                         name: f.name,
+                        originalSourceFileName: f.originalSourceFileName || f.name,
                         fileObj: fileObj,
                         ext: f.ext,
                         methodType: f.methodType || 'p2',
+                        warehouseId: f.warehouseId || null,
+                        isSplit: !!f.isSplit,
+                        splitIndex: f.splitIndex || null,
+                        totalSplits: f.totalSplits || 1,
+                        rowCount: f.rowCount || 0,
                         p2Value: f.p2Value || '',
                         colGValue: f.colGValue || '',
                         renameCode: f.renameCode || '',
@@ -3941,17 +3953,110 @@ async function handleRenFileSelection(files, methodType = 'p2') {
             };
 
             const aoa = await readExcelAsAOA(fileData.blob);
-            fileObj.parsedAOA = aoa ? aoa.slice(0, 50) : null;
             
             if (methodType === 'p2') {
-                // Extract P2 value: row index 1, column index 15 (Column P)
-                let p2Val = "";
-                if (aoa.length > 1 && aoa[1] && aoa[1][15] !== undefined) {
-                    p2Val = String(aoa[1][15]).trim();
+                // P2 / ORDER FILES: Check Column B (Warehouse ID) for multi-warehouse splitting
+                let whColIdx = 1; // Default Column B (index 1)
+                if (aoa && aoa.length > 0 && Array.isArray(aoa[0])) {
+                    for (let c = 0; c < aoa[0].length; c++) {
+                        const h = String(aoa[0][c] || '').trim().toLowerCase();
+                        if (h.includes('warehouse') || h === 'wh id' || h === 'wh_id') {
+                            whColIdx = c;
+                            break;
+                        }
+                    }
                 }
-                fileObj.p2Value = p2Val;
+
+                // Group data rows by unique Warehouse ID
+                const whGroups = new Map();
+                for (let r = 1; r < aoa.length; r++) {
+                    const row = aoa[r];
+                    if (!row || row.length === 0) continue;
+                    const hasData = row.some(cell => cell !== undefined && cell !== null && String(cell).trim() !== '');
+                    if (!hasData) continue;
+
+                    const whId = String(row[whColIdx] !== undefined && row[whColIdx] !== null ? row[whColIdx] : '').trim();
+                    const key = whId !== '' ? whId : 'Unknown_WH';
+                    if (!whGroups.has(key)) whGroups.set(key, []);
+                    whGroups.get(key).push(row);
+                }
+
+                const uniqueWhIds = Array.from(whGroups.keys());
+
+                if (uniqueWhIds.length > 1) {
+                    // MULTIPLE WAREHOUSE IDs -> Split into separate files: -1, -2, -3 ...
+                    const lastDot = fileData.name.lastIndexOf('.');
+                    const origBaseName = lastDot !== -1 ? fileData.name.substring(0, lastDot) : fileData.name;
+                    const ext = fileData.ext || 'xlsx';
+
+                    for (let idx = 0; idx < uniqueWhIds.length; idx++) {
+                        const whId = uniqueWhIds[idx];
+                        const splitNum = idx + 1;
+                        const splitFileName = `${origBaseName}-${splitNum}.${ext}`;
+                        const matchingRows = whGroups.get(whId);
+                        const splitAoa = [aoa[0], ...matchingRows];
+
+                        // Extract P2 value for this split (row 1, column 15 / Column P)
+                        let p2Val = "";
+                        if (splitAoa.length > 1 && splitAoa[1] && splitAoa[1][15] !== undefined) {
+                            p2Val = String(splitAoa[1][15]).trim();
+                        }
+
+                        // Generate independent XLSX workbook Blob for this split
+                        const ws = XLSX.utils.aoa_to_sheet(splitAoa);
+                        const wb = XLSX.utils.book_new();
+                        XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
+                        const arrayBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+                        const splitBlob = new Blob([arrayBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+
+                        renUploadedFiles.push({
+                            id: renNextId++,
+                            name: splitFileName,
+                            originalSourceFileName: fileData.name,
+                            fileObj: splitBlob,
+                            ext: ext,
+                            methodType: 'p2',
+                            warehouseId: whId,
+                            isSplit: true,
+                            splitIndex: splitNum,
+                            totalSplits: uniqueWhIds.length,
+                            rowCount: matchingRows.length,
+                            p2Value: p2Val,
+                            colGValue: "",
+                            renameCode: "",
+                            renamedName: "",
+                            parsedAOA: splitAoa.slice(0, 50)
+                        });
+                    }
+                } else {
+                    // SINGLE WAREHOUSE ID -> Keep original file without splitting or -1 suffix
+                    let p2Val = "";
+                    if (aoa.length > 1 && aoa[1] && aoa[1][15] !== undefined) {
+                        p2Val = String(aoa[1][15]).trim();
+                    }
+                    const singleWhId = uniqueWhIds[0] || "";
+
+                    renUploadedFiles.push({
+                        id: renNextId++,
+                        name: fileData.name,
+                        originalSourceFileName: fileData.name,
+                        fileObj: fileData.blob,
+                        ext: fileData.ext,
+                        methodType: 'p2',
+                        warehouseId: singleWhId,
+                        isSplit: false,
+                        splitIndex: null,
+                        totalSplits: 1,
+                        rowCount: Math.max(0, aoa.length - 1),
+                        p2Value: p2Val,
+                        colGValue: "",
+                        renameCode: "",
+                        renamedName: "",
+                        parsedAOA: aoa ? aoa.slice(0, 50) : null
+                    });
+                }
             } else {
-                // Extract Column G value: column index 6
+                // COLUMN G METHOD (TAX FILES)
                 let colGVal = "";
                 for (let r = 1; r < aoa.length; r++) {
                     const row = aoa[r];
@@ -3986,10 +4091,26 @@ async function handleRenFileSelection(files, methodType = 'p2') {
                         if (colGVal) break;
                     }
                 }
-                fileObj.colGValue = colGVal;
-            }
 
-            renUploadedFiles.push(fileObj);
+                renUploadedFiles.push({
+                    id: renNextId++,
+                    name: fileData.name,
+                    originalSourceFileName: fileData.name,
+                    fileObj: fileData.blob,
+                    ext: fileData.ext,
+                    methodType: 'g',
+                    warehouseId: null,
+                    isSplit: false,
+                    splitIndex: null,
+                    totalSplits: 1,
+                    rowCount: Math.max(0, aoa.length - 1),
+                    p2Value: "",
+                    colGValue: colGVal,
+                    renameCode: "",
+                    renamedName: "",
+                    parsedAOA: aoa ? aoa.slice(0, 50) : null
+                });
+            }
         }
 
         // New files added -> Needs processing by user clicking "Rename All Files"
@@ -4000,7 +4121,7 @@ async function handleRenFileSelection(files, methodType = 'p2') {
         saveRenameSessionToStorage();
 
         updateRenProgress(100, "Loaded!");
-        showToast(`${flatFilesList.length} ${methodType === 'p2' ? 'Order' : 'Tax'} file(s) loaded! Click 'Rename All Files' to process.`, "info");
+        showToast(`${flatFilesList.length} ${methodType === 'p2' ? 'Order' : 'Tax'} file(s) processed & loaded! Click 'Process & Rename All Files' to rename.`, "info");
         
         setTimeout(() => {
             if (renProgress) {
@@ -4095,13 +4216,14 @@ function renderRenameState() {
         if (stagedState) {
             stagedState.classList.remove('hidden');
             if (stagedTitle) stagedTitle.textContent = `${totalFiles} Files Loaded & Ready to Rename`;
-            if (stagedDesc) stagedDesc.innerHTML = `Loaded: <strong>${p2Files.length} Order Files (P2)</strong> and <strong>${gFiles.length} Tax Files (Column G)</strong>.<br>Click <strong>"Rename All Files"</strong> to calculate prefix codes.`;
+            if (stagedDesc) stagedDesc.innerHTML = `Loaded: <strong>${p2Files.length} Order Files (P2)</strong> and <strong>${gFiles.length} Tax Files (Column G)</strong>. Click <strong>"Process & Rename All Files"</strong> to calculate prefix codes.`;
         }
         if (resultsContainer) resultsContainer.classList.add('hidden');
         if (btnRenameRun) {
             btnRenameRun.classList.remove('hidden');
             btnRenameRun.disabled = false;
         }
+        renderStagedRenameFiles();
     } else {
         // Files processed -> Show Categorized Output Cards!
         if (stagedState) stagedState.classList.add('hidden');
@@ -4112,6 +4234,139 @@ function renderRenameState() {
         }
         renderCategorizedRenamePreview();
     }
+}
+
+// Render Staged Files Tables (Before User Clicks Rename)
+function renderStagedRenameFiles() {
+    const tbodyP2 = document.getElementById('tbody-staged-order-files');
+    const tbodyTax = document.getElementById('tbody-staged-tax-files');
+    const badgeP2 = document.getElementById('staged-order-count-badge');
+    const badgeTax = document.getElementById('staged-tax-count-badge');
+
+    const p2Files = renUploadedFiles.filter(f => f.methodType === 'p2');
+    const gFiles = renUploadedFiles.filter(f => f.methodType === 'g');
+
+    if (badgeP2) badgeP2.textContent = `${p2Files.length} file${p2Files.length === 1 ? '' : 's'}`;
+    if (badgeTax) badgeTax.textContent = `${gFiles.length} file${gFiles.length === 1 ? '' : 's'}`;
+
+    // 1. Render P2 Order Files Table
+    if (tbodyP2) {
+        tbodyP2.innerHTML = '';
+        if (p2Files.length === 0) {
+            tbodyP2.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 1.2rem; font-size: 0.74rem;">No Order (P2) files loaded yet. Drop P2 files on the left.</td></tr>`;
+        } else {
+            p2Files.forEach((file, idx) => {
+                const tr = document.createElement('tr');
+                tr.className = `row-color-${idx % 7}`;
+                const fileSizeFormatted = file.fileObj ? formatBytes(file.fileObj.size) : '—';
+                const splitBadge = file.isSplit 
+                    ? `<span class="badge" style="font-size: 0.62rem; background: rgba(124, 58, 237, 0.12); color: var(--primary); font-weight: 700; margin-left: 4px; padding: 1px 5px; border-radius: 4px;">Split ${file.splitIndex}/${file.totalSplits}</span>`
+                    : '';
+                const whBadge = file.warehouseId 
+                    ? `<span class="badge" style="font-size: 0.65rem; background: rgba(59, 130, 246, 0.12); color: #2563eb; font-weight: 700;">🏬 ${file.warehouseId}</span>`
+                    : `<span style="color: var(--text-muted); font-size: 0.7rem;">—</span>`;
+                const p2Display = file.p2Value 
+                    ? `<span style="font-family: monospace; font-weight: 700; color: var(--primary); font-size: 0.72rem;">${file.p2Value}</span>`
+                    : `<span style="color: var(--text-muted); font-style: italic; font-size: 0.7rem;">Not detected</span>`;
+
+                tr.innerHTML = `
+                    <td style="text-align: center; font-weight: 600;">${idx + 1}</td>
+                    <td>
+                        <span style="font-family: monospace; font-weight: 600; color: var(--text-primary); display: inline-flex; align-items: center; gap: 4px;">
+                            📄 ${file.name} ${splitBadge}
+                        </span>
+                    </td>
+                    <td>${whBadge}</td>
+                    <td>${p2Display}</td>
+                    <td style="color: var(--text-secondary); font-size: 0.72rem;">${file.rowCount ? file.rowCount + ' rows' : '—'}</td>
+                    <td style="color: var(--text-secondary); font-size: 0.72rem;">${fileSizeFormatted}</td>
+                    <td style="text-align: center;">
+                        <div style="display: inline-flex; align-items: center; justify-content: center; gap: 4px;">
+                            <button class="btn-sub-icon btn-inspect-staged-file" data-file-id="${file.id}" title="Inspect first 50 rows" style="width: 24px; height: 24px; border-radius: 5px; border: 1px solid rgba(16, 185, 129, 0.25); background: rgba(16, 185, 129, 0.08); color: #059669; display: inline-flex; align-items: center; justify-content: center; cursor: pointer;">
+                                <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2" fill="none"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                            </button>
+                            <button class="btn-sub-icon btn-del-staged-file" data-file-id="${file.id}" data-filename="${file.name}" title="Delete file" style="width: 24px; height: 24px; border-radius: 5px; border: 1px solid rgba(220, 38, 38, 0.25); background: rgba(220, 38, 38, 0.08); color: #dc2626; display: inline-flex; align-items: center; justify-content: center; cursor: pointer;">
+                                <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2" fill="none"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                            </button>
+                        </div>
+                    </td>
+                `;
+                tbodyP2.appendChild(tr);
+            });
+        }
+    }
+
+    // 2. Render Column G Tax Files Table
+    if (tbodyTax) {
+        tbodyTax.innerHTML = '';
+        if (gFiles.length === 0) {
+            tbodyTax.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-muted); padding: 1.2rem; font-size: 0.74rem;">No Tax (Column G) files loaded yet. Drop Column G files on the left.</td></tr>`;
+        } else {
+            gFiles.forEach((file, idx) => {
+                const tr = document.createElement('tr');
+                tr.className = `row-color-${idx % 7}`;
+                const fileSizeFormatted = file.fileObj ? formatBytes(file.fileObj.size) : '—';
+                const colGDisplay = file.colGValue 
+                    ? `<span style="font-family: monospace; font-weight: 700; color: #059669; font-size: 0.72rem;">${file.colGValue}</span>`
+                    : `<span style="color: var(--text-muted); font-style: italic; font-size: 0.7rem;">Not detected</span>`;
+
+                tr.innerHTML = `
+                    <td style="text-align: center; font-weight: 600;">${idx + 1}</td>
+                    <td>
+                        <span style="font-family: monospace; font-weight: 600; color: var(--text-primary); display: inline-flex; align-items: center; gap: 4px;">
+                            📄 ${file.name}
+                        </span>
+                    </td>
+                    <td>${colGDisplay}</td>
+                    <td style="color: var(--text-secondary); font-size: 0.72rem;">${file.rowCount ? file.rowCount + ' rows' : '—'}</td>
+                    <td style="color: var(--text-secondary); font-size: 0.72rem;">${fileSizeFormatted}</td>
+                    <td style="text-align: center;">
+                        <div style="display: inline-flex; align-items: center; justify-content: center; gap: 4px;">
+                            <button class="btn-sub-icon btn-inspect-staged-file" data-file-id="${file.id}" title="Inspect first 50 rows" style="width: 24px; height: 24px; border-radius: 5px; border: 1px solid rgba(16, 185, 129, 0.25); background: rgba(16, 185, 129, 0.08); color: #059669; display: inline-flex; align-items: center; justify-content: center; cursor: pointer;">
+                                <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2" fill="none"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                            </button>
+                            <button class="btn-sub-icon btn-del-staged-file" data-file-id="${file.id}" data-filename="${file.name}" title="Delete file" style="width: 24px; height: 24px; border-radius: 5px; border: 1px solid rgba(220, 38, 38, 0.25); background: rgba(220, 38, 38, 0.08); color: #dc2626; display: inline-flex; align-items: center; justify-content: center; cursor: pointer;">
+                                <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2" fill="none"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                            </button>
+                        </div>
+                    </td>
+                `;
+                tbodyTax.appendChild(tr);
+            });
+        }
+    }
+
+    // Attach click listeners for Inspect and Delete on staged files
+    document.querySelectorAll('.btn-inspect-staged-file').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const fileId = parseInt(btn.getAttribute('data-file-id'), 10);
+            const fileObj = renUploadedFiles.find(f => f.id === fileId);
+            if (fileObj) {
+                openRenFileInspector(fileObj);
+            }
+        });
+    });
+
+    document.querySelectorAll('.btn-del-staged-file').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const fileId = parseInt(btn.getAttribute('data-file-id'), 10);
+            const fileName = btn.getAttribute('data-filename') || "File";
+            showDeleteConfirmation({
+                title: "Delete Staged File?",
+                message: `Are you sure you want to remove "${fileName}" from the loaded queue?`,
+                onConfirm: () => {
+                    renUploadedFiles = renUploadedFiles.filter(f => f.id !== fileId);
+                    resetRenameButtonState();
+                    updateRenUploadBadges();
+                    renderRenameState();
+                    saveRenameSessionToStorage();
+                    showToast(`File "${fileName}" removed.`, "info");
+                }
+            });
+        });
+    });
 }
 
 // Helper: Extract party code for Option B (Column G / TaxReportData / EE Invoice No files)
