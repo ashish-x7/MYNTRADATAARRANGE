@@ -107,6 +107,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setupRenameFile();
     setupMergeFile();
     setupMyntraError();
+    setupLossError();
     setupFolderCreate();
     setupInvoiceError();
     setupErrorTracker();
@@ -6068,6 +6069,41 @@ let errGeneratedZipBlob = null;
 let errGeneratedZipName = "";
 
 function setupMyntraError() {
+    // Sub-tab Navigation (Sale vs Purchase)
+    const meSubTabBtns = document.querySelectorAll('.me-subtab-btn');
+    meSubTabBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const targetSubTabId = btn.getAttribute('data-me-subtab');
+            meSubTabBtns.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+
+            const salePane = document.getElementById('me-subtab-sale');
+            const purchasePane = document.getElementById('me-subtab-purchase');
+
+            if (targetSubTabId === 'me-subtab-sale') {
+                if (salePane) {
+                    salePane.classList.add('active-pane');
+                    salePane.style.display = 'block';
+                }
+                if (purchasePane) {
+                    purchasePane.classList.remove('active-pane');
+                    purchasePane.style.display = 'none';
+                }
+            } else {
+                if (salePane) {
+                    salePane.classList.remove('active-pane');
+                    salePane.style.display = 'none';
+                }
+                if (purchasePane) {
+                    purchasePane.classList.add('active-pane');
+                    purchasePane.style.display = 'block';
+                }
+            }
+        });
+    });
+
+    setupPurchaseError();
+
     const detailsDropzone = document.getElementById('err-details-dropzone');
     const detailsInput = document.getElementById('err-details-file-input');
     const dataDropzone = document.getElementById('err-data-dropzone');
@@ -6741,6 +6777,1726 @@ function parseCellAsDate(val) {
     const d = new Date(str);
     return isNaN(d.getTime()) ? null : d;
 }
+
+/* ==========================================================================
+   HELPER UTILITIES FOR DROPZONES, FORMATTING & DOWNLOADS
+   ========================================================================== */
+
+function readFileAsArrayBuffer(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve(e.target.result);
+        reader.onerror = (e) => reject(e);
+        reader.readAsArrayBuffer(file);
+    });
+}
+
+function setupMiniDropzone(zone, input, callback) {
+    if (!zone || !input) return;
+    zone.addEventListener('click', (e) => {
+        if (e.target !== input) input.click();
+    });
+    input.addEventListener('click', (e) => {
+        e.stopPropagation();
+    });
+    input.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+            callback(e.target.files[0]);
+        }
+    });
+    ['dragenter', 'dragover'].forEach(eventName => {
+        zone.addEventListener(eventName, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            zone.classList.add('dragover');
+        });
+    });
+    ['dragleave', 'drop'].forEach(eventName => {
+        zone.addEventListener(eventName, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            zone.classList.remove('dragover');
+        });
+    });
+    zone.addEventListener('drop', (e) => {
+        if (e.dataTransfer && e.dataTransfer.files.length > 0) {
+            callback(e.dataTransfer.files[0]);
+        }
+    });
+}
+
+function setupMultiDropzone(zone, input, callback) {
+    if (!zone || !input) return;
+    zone.addEventListener('click', (e) => {
+        if (e.target !== input) input.click();
+    });
+    input.addEventListener('click', (e) => {
+        e.stopPropagation();
+    });
+    input.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+            callback(Array.from(e.target.files));
+        }
+    });
+    ['dragenter', 'dragover'].forEach(eventName => {
+        zone.addEventListener(eventName, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            zone.classList.add('dragover');
+        });
+    });
+    ['dragleave', 'drop'].forEach(eventName => {
+        zone.addEventListener(eventName, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            zone.classList.remove('dragover');
+        });
+    });
+    zone.addEventListener('drop', (e) => {
+        if (e.dataTransfer && e.dataTransfer.files.length > 0) {
+            callback(Array.from(e.dataTransfer.files));
+        }
+    });
+}
+
+function triggerDownload(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function getFileIconClass(filename) {
+    const ext = String(filename || "").split('.').pop().toLowerCase();
+    if (ext === 'zip') return 'fa-solid fa-file-zipper text-purple';
+    if (ext === 'csv') return 'fa-solid fa-file-csv text-teal';
+    if (ext === 'xlsx' || ext === 'xls') return 'fa-solid fa-file-excel text-success';
+    return 'fa-solid fa-file text-muted';
+}
+
+function toPureText(val) {
+    if (val === undefined || val === null) return "";
+    let str = String(val).trim();
+    if (typeof val === 'number') {
+        str = Number(val).toLocaleString('fullwide', { useGrouping: false });
+    } else if (str.toLowerCase().includes('e')) {
+        const num = Number(str);
+        if (!isNaN(num)) {
+            str = num.toLocaleString('fullwide', { useGrouping: false });
+        }
+    }
+    if (str.includes('.') && /^\d+\.0+$/.test(str)) {
+        str = str.split('.')[0];
+    }
+    return str;
+}
+
+function cleanPurchaseKeyVal(val) {
+    if (val === undefined || val === null) return "";
+    let str = toPureText(val).toUpperCase();
+    str = str.replace(/\s+/g, '').trim();
+    return str;
+}
+
+function cleanLossKeyVal(val) {
+    if (val === undefined || val === null) return "";
+    let str = toPureText(val).toUpperCase();
+    str = str.replace(/\s+/g, '').trim();
+    return str;
+}
+
+function formatPurchaseDateVal(dt) {
+    if (dt === undefined || dt === null) return "";
+    if (typeof dt === 'number' && dt > 20000 && dt < 80000) {
+        const dObj = new Date(Math.round((dt - 25569) * 86400 * 1000));
+        const pad = n => String(n).padStart(2, '0');
+        return `${pad(dObj.getDate())}/${pad(dObj.getMonth() + 1)}/${dObj.getFullYear()}`;
+    }
+    if (dt instanceof Date && !isNaN(dt.getTime())) {
+        const pad = n => String(n).padStart(2, '0');
+        return `${pad(dt.getDate())}/${pad(dt.getMonth() + 1)}/${dt.getFullYear()}`;
+    }
+    return String(dt).trim();
+}
+
+function formatLossDateVal(dt) {
+    return formatPurchaseDateVal(dt);
+}
+
+function getSafeSheetName(str) {
+    if (!str) return "Sheet1";
+    let safe = str.replace(/[\\/?*\[\]:]/g, '_').trim();
+    if (safe.length > 31) safe = safe.substring(0, 31);
+    return safe || "Sheet1";
+}
+
+/* ==========================================================================
+   PURCHASE PRICE DISPUTE LOGIC (MYNTRA)
+   ========================================================================== */
+let mePurchaseDetailsFiles = [];
+let mePurchaseDataFile = null;
+let mePurchaseZipBlob = null;
+let mePurchaseZipFilename = "";
+let mePurchaseMergedBlob = null;
+let mePurchaseMergedFilename = "";
+
+function mePurchaseLog(message, type = 'info') {
+    const consoleLog = document.getElementById('mePurchaseConsoleLog');
+    if (!consoleLog) return;
+    const line = document.createElement('div');
+    line.className = `log-line ${type}`;
+    const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    line.innerText = `[${timestamp}] ${message}`;
+    if (consoleLog.children.length > 300) {
+        consoleLog.removeChild(consoleLog.firstChild);
+    }
+    consoleLog.appendChild(line);
+    consoleLog.scrollTop = consoleLog.scrollHeight;
+}
+
+function checkMePurchaseInputs() {
+    const btn = document.getElementById('mePurchaseBtn');
+    if (mePurchaseDetailsFiles.length > 0 && mePurchaseDataFile) {
+        if (btn) btn.removeAttribute('disabled');
+    } else {
+        if (btn) btn.setAttribute('disabled', 'true');
+    }
+}
+
+function updateMePurchaseDetailsUI() {
+    const countEl = document.getElementById('mePurchaseDetailsSelectedCount');
+    const listEl = document.getElementById('mePurchaseDetailsUploadedFileList');
+    if (countEl) countEl.innerText = mePurchaseDetailsFiles.length;
+    if (!listEl) return;
+
+    if (mePurchaseDetailsFiles.length > 0) {
+        listEl.innerHTML = '';
+        mePurchaseDetailsFiles.forEach((fileObj) => {
+            const item = document.createElement('div');
+            item.className = 'file-item';
+
+            const info = document.createElement('div');
+            info.className = 'file-info';
+
+            const icon = document.createElement('i');
+            icon.className = getFileIconClass(fileObj.name);
+
+            const nameSpan = document.createElement('span');
+            nameSpan.className = 'file-name';
+            nameSpan.innerText = fileObj.name;
+
+            const sizeSpan = document.createElement('span');
+            sizeSpan.className = 'file-size';
+            sizeSpan.innerText = formatBytes(fileObj.size);
+
+            info.appendChild(icon);
+            info.appendChild(nameSpan);
+            info.appendChild(sizeSpan);
+
+            const removeBtn = document.createElement('button');
+            removeBtn.className = 'file-action-btn';
+            removeBtn.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+            removeBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                mePurchaseDetailsFiles = mePurchaseDetailsFiles.filter(f => f.id !== fileObj.id);
+                mePurchaseLog(`Removed file: ${fileObj.name}`, 'info');
+                updateMePurchaseDetailsUI();
+                checkMePurchaseInputs();
+            });
+
+            item.appendChild(info);
+            item.appendChild(removeBtn);
+            listEl.appendChild(item);
+        });
+    } else {
+        listEl.innerHTML = '<div class="empty-list-msg" style="font-size: 0.75rem; color: var(--text-muted); text-align: center; padding: 0.5rem;">No details files selected yet.</div>';
+    }
+    checkMePurchaseInputs();
+}
+
+function setupPurchaseError() {
+    const purchaseDropzone = document.getElementById('mePurchaseDetailsDropzone');
+    const purchaseInput = document.getElementById('mePurchaseDetailsFileInput');
+    const purchaseClearBtn = document.getElementById('clearMePurchaseDetailsFilesBtn');
+    const purchaseDataDropzone = document.getElementById('mePurchaseDataDropzone');
+    const purchaseDataInput = document.getElementById('mePurchaseDataFileInput');
+    const purchaseBtn = document.getElementById('mePurchaseBtn');
+    const clearLogBtn = document.getElementById('clearMePurchaseLogBtn');
+
+    if (purchaseDropzone && purchaseInput) {
+        setupMultiDropzone(purchaseDropzone, purchaseInput, (files) => {
+            let added = 0;
+            files.forEach(file => {
+                if (!mePurchaseDetailsFiles.some(f => f.name === file.name && f.size === file.size)) {
+                    mePurchaseDetailsFiles.push({
+                        id: Date.now() + '-' + Math.random().toString(36).substr(2, 9),
+                        name: file.name,
+                        size: file.size,
+                        file: file
+                    });
+                    added++;
+                }
+            });
+            if (added > 0) {
+                mePurchaseLog(`Added ${added} Purchase Details file(s). Total: ${mePurchaseDetailsFiles.length}`, 'success');
+            }
+            updateMePurchaseDetailsUI();
+        });
+    }
+
+    if (purchaseClearBtn) {
+        purchaseClearBtn.addEventListener('click', () => {
+            mePurchaseDetailsFiles = [];
+            if (purchaseInput) purchaseInput.value = '';
+            updateMePurchaseDetailsUI();
+            mePurchaseLog('Cleared all selected Purchase Details files.', 'info');
+        });
+    }
+
+    if (purchaseDataDropzone && purchaseDataInput) {
+        setupMiniDropzone(purchaseDataDropzone, purchaseDataInput, (file) => {
+            mePurchaseDataFile = file;
+            const display = document.getElementById('mePurchaseDataFileDisplay');
+            if (display) {
+                display.innerText = file.name;
+                display.title = file.name;
+            }
+            purchaseDataDropzone.classList.add('file-selected');
+            mePurchaseLog(`Selected Myntra Data File: ${file.name} (${formatBytes(file.size)})`, 'info');
+            checkMePurchaseInputs();
+        });
+    }
+
+    if (clearLogBtn) {
+        clearLogBtn.addEventListener('click', () => {
+            const consoleLog = document.getElementById('mePurchaseConsoleLog');
+            if (consoleLog) {
+                consoleLog.innerHTML = '';
+                mePurchaseLog('Log cleared.', 'info');
+            }
+        });
+    }
+
+    if (purchaseBtn) {
+        purchaseBtn.addEventListener('click', runPurchaseErrorProcess);
+    }
+}
+
+function formatPurchaseWorksheet(ws) {
+    if (!ws || !ws['!ref']) return;
+    const range = XLSX.utils.decode_range(ws['!ref']);
+    const cols = [];
+
+    for (let C = range.s.c; C <= range.e.c; ++C) {
+        cols.push({ wch: 10 });
+    }
+
+    for (let R = range.s.r; R <= range.e.r; ++R) {
+        if (R === 0 && ws['!merges'] && ws['!merges'].length > 0) {
+            continue; // Skip title row for col width calc
+        }
+        for (let C = range.s.c; C <= range.e.c; ++C) {
+            const cell_address = { c: C, r: R };
+            const cell_ref = XLSX.utils.encode_cell(cell_address);
+            const cell = ws[cell_ref];
+            if (cell && cell.v !== undefined && cell.v !== null) {
+                const len = String(cell.v).length;
+                if (len > cols[C].wch) cols[C].wch = len;
+            }
+        }
+    }
+
+    cols.forEach((col, idx) => {
+        if (idx === 14) {
+            col.wch = Math.min(Math.max(col.wch + 4, 15), 30); // Order date (Col O)
+        } else if (idx === 4) {
+            col.wch = Math.min(Math.max(col.wch + 3, 16), 35); // Item Asin
+        } else {
+            col.wch = Math.min(Math.max(col.wch + 3, 10), 45);
+        }
+    });
+    ws['!cols'] = cols;
+
+    for (let R = range.s.r; R <= range.e.r; ++R) {
+        for (let C = range.s.c; C <= range.e.c; ++C) {
+            const cell_address = { c: C, r: R };
+            const cell_ref = XLSX.utils.encode_cell(cell_address);
+            if (!ws[cell_ref]) {
+                ws[cell_ref] = { t: 's', v: '' };
+            }
+            const cell = ws[cell_ref];
+            const isTitle = (R === 0);
+            const isHeader = (R === 1);
+            const isData = (R >= 2);
+
+            cell.s = {
+                border: {
+                    top: { style: 'thin', color: { rgb: 'E5E7EB' } },
+                    bottom: { style: 'thin', color: { rgb: 'E5E7EB' } },
+                    left: { style: 'thin', color: { rgb: 'E5E7EB' } },
+                    right: { style: 'thin', color: { rgb: 'E5E7EB' } }
+                }
+            };
+
+            if (isTitle) {
+                cell.s.font = { name: 'Segoe UI', sz: 12, bold: true, color: { rgb: 'FFFFFF' } };
+                cell.s.fill = { fgColor: { rgb: '7B2CBF' } }; // Purple banner
+                cell.s.alignment = { horizontal: 'center', vertical: 'center' };
+            } else if (isHeader) {
+                cell.s.font = { name: 'Segoe UI', sz: 10, bold: true, color: { rgb: '1E293B' } };
+                if (C === 14) {
+                    cell.s.fill = { fgColor: { rgb: 'DCFCE7' } }; // Light Green for Order Date
+                    cell.s.font = { name: 'Segoe UI', sz: 10, bold: true, color: { rgb: '15803D' } };
+                } else if (C === 4) {
+                    cell.s.fill = { fgColor: { rgb: 'EDE9FE' } }; // Soft purple for Item Asin
+                    cell.s.font = { name: 'Segoe UI', sz: 10, bold: true, color: { rgb: '6D28D9' } };
+                } else {
+                    cell.s.fill = { fgColor: { rgb: 'F1F5F9' } }; // Slate Header
+                }
+                cell.s.alignment = { horizontal: 'center', vertical: 'center' };
+            } else if (isData) {
+                cell.s.font = { name: 'Segoe UI', sz: 9, color: { rgb: '334155' } };
+
+                // Column E (index 4 - Item Asin): Pure Text
+                if (C === 4) {
+                    const cleanAsin = toPureText(cell.v);
+                    cell.v = cleanAsin;
+                    cell.t = 's';
+                    cell.z = '@';
+                    cell.s.alignment = { horizontal: 'left', vertical: 'center' };
+                    cell.s.font = { name: 'Segoe UI', sz: 9, color: { rgb: '1E293B' } };
+                }
+                // Column D (Order ID), Column B (Invoice No), Column A
+                else if (C === 3 || C === 1 || C === 0) {
+                    const cleanText = toPureText(cell.v);
+                    cell.v = cleanText;
+                    cell.t = 's';
+                    cell.z = '@';
+                    cell.s.alignment = { horizontal: 'left', vertical: 'center' };
+                }
+                // Column O (index 14 - Order date)
+                else if (C === 14) {
+                    cell.t = 's';
+                    cell.z = '@';
+                    cell.s.alignment = { horizontal: 'center', vertical: 'center' };
+                    cell.s.font = { name: 'Segoe UI', sz: 9, bold: true, color: { rgb: '15803D' } };
+                }
+                // Numerical amount / quantity columns
+                else {
+                    const val = cell.v;
+                    if (val !== undefined && val !== null && !isNaN(Number(val)) && String(val).trim() !== "") {
+                        cell.s.alignment = { horizontal: 'right', vertical: 'center' };
+                    } else {
+                        cell.s.alignment = { horizontal: 'left', vertical: 'center' };
+                    }
+                }
+            }
+        }
+    }
+}
+
+function renderMePurchaseDashboard(filesList, mergedBlob, zipFilename, mergedFilename, stats) {
+    const container = document.getElementById('mePurchaseOutputContainer');
+    if (!container) return;
+    container.innerHTML = '';
+    container.className = 'processed-container';
+
+    // 1. Stats Cards
+    const statsRow = document.createElement('div');
+    statsRow.className = 'stats-card-grid';
+    statsRow.style.display = 'grid';
+    statsRow.style.gridTemplateColumns = 'repeat(auto-fit, minmax(130px, 1fr))';
+    statsRow.style.gap = '0.75rem';
+    statsRow.style.marginBottom = '1.25rem';
+
+    statsRow.innerHTML = `
+        <div style="background: white; border: 1px solid var(--border-color); border-radius: 10px; padding: 0.85rem; box-shadow: 0 1px 3px rgba(0,0,0,0.03);">
+            <div style="font-size: 0.72rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase;">Total Files</div>
+            <div style="font-size: 1.4rem; font-weight: 800; color: #7b2cbf; margin-top: 0.2rem;">${stats.totalFiles}</div>
+        </div>
+        <div style="background: white; border: 1px solid var(--border-color); border-radius: 10px; padding: 0.85rem; box-shadow: 0 1px 3px rgba(0,0,0,0.03);">
+            <div style="font-size: 0.72rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase;">Total Rows</div>
+            <div style="font-size: 1.4rem; font-weight: 800; color: #1e293b; margin-top: 0.2rem;">${stats.totalRows}</div>
+        </div>
+        <div style="background: white; border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 10px; padding: 0.85rem; background: rgba(240, 253, 244, 0.6); box-shadow: 0 1px 3px rgba(0,0,0,0.03);">
+            <div style="font-size: 0.72rem; color: #15803d; font-weight: 600; text-transform: uppercase;">Dates Matched</div>
+            <div style="font-size: 1.4rem; font-weight: 800; color: #15803d; margin-top: 0.2rem;">${stats.totalMatched}</div>
+        </div>
+        <div style="background: white; border: 1px solid ${stats.totalUnmatched > 0 ? 'rgba(245, 158, 11, 0.3)' : 'var(--border-color)'}; border-radius: 10px; padding: 0.85rem; background: ${stats.totalUnmatched > 0 ? 'rgba(254, 243, 199, 0.5)' : 'white'}; box-shadow: 0 1px 3px rgba(0,0,0,0.03);">
+            <div style="font-size: 0.72rem; color: ${stats.totalUnmatched > 0 ? '#b45309' : 'var(--text-muted)'}; font-weight: 600; text-transform: uppercase;">Unmatched</div>
+            <div style="font-size: 1.4rem; font-weight: 800; color: ${stats.totalUnmatched > 0 ? '#b45309' : '#64748b'}; margin-top: 0.2rem;">${stats.totalUnmatched}</div>
+        </div>
+    `;
+    container.appendChild(statsRow);
+
+    // 2. Action Download Bar
+    const actionsBar = document.createElement('div');
+    actionsBar.style.display = 'flex';
+    actionsBar.style.flexWrap = 'wrap';
+    actionsBar.style.gap = '0.75rem';
+    actionsBar.style.marginBottom = '1.25rem';
+
+    actionsBar.innerHTML = `
+        <button type="button" class="btn btn-primary" id="mePurchaseDownloadZipBtn" style="flex: 1; min-width: 200px; display: flex; align-items: center; justify-content: center; gap: 0.5rem; padding: 0.65rem 1.2rem; font-weight: 700; border-radius: 8px; background: linear-gradient(135deg, #7b2cbf, #560bad); cursor: pointer; color: white; border: none;">
+            <i class="fa-solid fa-file-zipper"></i> Download ZIP Package
+        </button>
+        <button type="button" class="btn btn-success" id="mePurchaseDownloadMergedBtn" style="flex: 1; min-width: 200px; display: flex; align-items: center; justify-content: center; gap: 0.5rem; padding: 0.65rem 1.2rem; font-weight: 700; border-radius: 8px; background: linear-gradient(135deg, #059669, #10b981); cursor: pointer; color: white; border: none;">
+            <i class="fa-solid fa-file-excel"></i> Download Merged Excel (${filesList.length} Sheets)
+        </button>
+    `;
+    container.appendChild(actionsBar);
+
+    // Bind Download Buttons
+    const dlZipBtn = actionsBar.querySelector('#mePurchaseDownloadZipBtn');
+    if (dlZipBtn) {
+        dlZipBtn.addEventListener('click', () => {
+            if (mePurchaseZipBlob) {
+                triggerDownload(mePurchaseZipBlob, zipFilename);
+                mePurchaseLog(`Downloaded complete ZIP package: ${zipFilename}`, 'info');
+            }
+        });
+    }
+
+    const dlMergedBtn = actionsBar.querySelector('#mePurchaseDownloadMergedBtn');
+    if (dlMergedBtn) {
+        dlMergedBtn.addEventListener('click', () => {
+            if (mergedBlob) {
+                triggerDownload(mergedBlob, mergedFilename);
+                mePurchaseLog(`Downloaded Merged Excel file: ${mergedFilename}`, 'info');
+            }
+        });
+    }
+
+    // 3. Processed Files Table Card
+    const tableCard = document.createElement('div');
+    tableCard.style.background = 'white';
+    tableCard.style.border = '1px solid var(--border-color)';
+    tableCard.style.borderRadius = '12px';
+    tableCard.style.overflow = 'hidden';
+    tableCard.style.boxShadow = '0 1px 3px rgba(0,0,0,0.03)';
+
+    const tableHeader = document.createElement('div');
+    tableHeader.style.padding = '0.75rem 1rem';
+    tableHeader.style.borderBottom = '1px solid var(--border-color)';
+    tableHeader.style.background = '#f8fafc';
+    tableHeader.style.display = 'flex';
+    tableHeader.style.justifyContent = 'space-between';
+    tableHeader.style.alignItems = 'center';
+    tableHeader.innerHTML = `
+        <span style="font-size: 0.85rem; font-weight: 700; color: #1e293b;"><i class="fa-solid fa-table-list text-purple"></i> Processed Purchase Details Files (${filesList.length})</span>
+        <span style="font-size: 0.75rem; color: var(--text-muted);">Column O (Order date) successfully updated</span>
+    `;
+    tableCard.appendChild(tableHeader);
+
+    const tableWrap = document.createElement('div');
+    tableWrap.style.overflowX = 'auto';
+    tableWrap.style.overflowY = 'auto';
+    tableWrap.style.maxHeight = '280px';
+    tableWrap.style.webkitOverflowScrolling = 'touch';
+
+    const table = document.createElement('table');
+    table.className = 'preview-table';
+    table.style.width = '100%';
+    table.style.minWidth = '720px';
+    table.style.fontSize = '0.82rem';
+
+    table.innerHTML = `
+        <thead style="position: sticky; top: 0; z-index: 2; background: #f8fafc;">
+            <tr>
+                <th style="width: 40px; text-align: center; background: #f8fafc;">#</th>
+                <th style="background: #f8fafc;">Details File Name</th>
+                <th style="background: #f8fafc;">Sheet Name</th>
+                <th style="text-align: center; background: #f8fafc;">Total Rows</th>
+                <th style="text-align: center; background: #f8fafc;">Matched Dates</th>
+                <th style="text-align: center; background: #f8fafc;">Unmatched</th>
+                <th style="text-align: center; background: #f8fafc;">Status</th>
+                <th style="text-align: center; width: 140px; background: #f8fafc;">Actions</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    `;
+
+    const tbody = table.querySelector('tbody');
+    filesList.forEach((file, idx) => {
+        const tr = document.createElement('tr');
+        const matchRate = file.totalRows > 0 ? Math.round((file.matched / file.totalRows) * 100) : 0;
+        const isFullMatch = file.unmatched === 0;
+
+        tr.innerHTML = `
+            <td style="text-align: center; font-weight: 700; color: var(--text-muted);">${idx + 1}</td>
+            <td style="font-weight: 600; color: var(--text-primary);">
+                <i class="fa-solid fa-file-excel text-purple" style="margin-right: 0.35rem;"></i>
+                ${file.name}
+            </td>
+            <td style="color: #64748b; font-family: monospace; font-size: 0.78rem;">[${file.sheetName}]</td>
+            <td style="text-align: center; font-weight: 700;">${file.totalRows}</td>
+            <td style="text-align: center; font-weight: 700; color: #15803d;">${file.matched}</td>
+            <td style="text-align: center; font-weight: 700; color: ${file.unmatched > 0 ? '#b45309' : '#64748b'};">${file.unmatched}</td>
+            <td style="text-align: center;">
+                <span style="font-size: 0.72rem; font-weight: 700; padding: 0.2rem 0.5rem; border-radius: 6px; background: ${isFullMatch ? '#dcfce7' : '#fef3c7'}; color: ${isFullMatch ? '#15803d' : '#b45309'}; border: 1px solid ${isFullMatch ? '#86efac' : '#fde68a'};">
+                    ${matchRate}% Matched
+                </span>
+            </td>
+            <td style="text-align: center;">
+                <div style="display: inline-flex; gap: 0.35rem;">
+                    <button type="button" class="btn btn-download-single" title="Download this updated file" style="padding: 0.3rem 0.6rem; font-size: 0.75rem; border-radius: 6px; background: #ede9fe; color: #6d28d9; border: 1px solid #d8b4fe; cursor: pointer;">
+                        <i class="fa-solid fa-download"></i>
+                    </button>
+                    <button type="button" class="btn btn-preview-single" title="Preview Excel data" style="padding: 0.3rem 0.6rem; font-size: 0.75rem; border-radius: 6px; background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; cursor: pointer;">
+                        <i class="fa-solid fa-eye"></i>
+                    </button>
+                </div>
+            </td>
+        `;
+
+        const dlBtn = tr.querySelector('.btn-download-single');
+        if (dlBtn) {
+            dlBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                triggerDownload(file.blob, file.name);
+                mePurchaseLog(`Downloaded individual file: ${file.name}`, 'info');
+            });
+        }
+
+        const prevBtn = tr.querySelector('.btn-preview-single');
+        if (prevBtn) {
+            prevBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                openRenFileInspector({
+                    name: file.name,
+                    fileObj: file.blob,
+                    parsedAOA: file.aoa
+                });
+            });
+        }
+
+        tbody.appendChild(tr);
+    });
+
+    tableWrap.appendChild(table);
+    tableCard.appendChild(tableWrap);
+    container.appendChild(tableCard);
+}
+
+async function runPurchaseErrorProcess() {
+    if (mePurchaseDetailsFiles.length === 0 || !mePurchaseDataFile) return;
+
+    const btn = document.getElementById('mePurchaseBtn');
+    const progressCard = document.getElementById('mePurchaseProgressCard');
+    const progressBar = document.getElementById('mePurchaseProgressBar');
+    const progressPercent = document.getElementById('mePurchaseProgressPercent');
+    const progressStepText = document.getElementById('mePurchaseProgressStepText');
+    const container = document.getElementById('mePurchaseOutputContainer');
+
+    if (btn) btn.setAttribute('disabled', 'true');
+    if (progressCard) progressCard.classList.remove('hidden');
+    if (progressBar) progressBar.style.width = '5%';
+    if (progressPercent) progressPercent.innerText = '5%';
+    if (progressStepText) progressStepText.innerText = 'Reading Myntra Data file...';
+
+    if (container) {
+        container.innerHTML = `
+            <div class="empty-output-state">
+                <i class="fa-solid fa-spinner fa-spin placeholder-icon" style="color: #7b2cbf;"></i>
+                <p>Processing Purchase Details and matching with Myntra Data file...</p>
+            </div>
+        `;
+    }
+
+    try {
+        mePurchaseLog('Starting Purchase Price Dispute Process...', 'process');
+        mePurchaseLog(`Selected Details Files: ${mePurchaseDetailsFiles.length}`, 'info');
+        mePurchaseLog(`Selected Myntra Data File: ${mePurchaseDataFile.name}`, 'info');
+
+        // Step 1: Read and Index the Myntra Data File (Col E -> Col C)
+        if (progressBar) progressBar.style.width = '12%';
+        if (progressPercent) progressPercent.innerText = '12%';
+        if (progressStepText) progressStepText.innerText = 'Parsing Myntra Data spreadsheet...';
+
+        const dataBuffer = await readFileAsArrayBuffer(mePurchaseDataFile);
+        const dataWb = XLSX.read(dataBuffer, { type: 'array', cellDates: true });
+        
+        let dataSheetName = dataWb.SheetNames[0];
+        for (const sName of dataWb.SheetNames) {
+            const low = sName.toLowerCase();
+            if (low.includes('data') || low.includes('myntra')) {
+                dataSheetName = sName;
+                break;
+            }
+        }
+
+        const dataWs = dataWb.Sheets[dataSheetName];
+        const dataAoa = XLSX.utils.sheet_to_json(dataWs, { header: 1, defval: "" });
+        mePurchaseLog(`Loaded Myntra Data sheet [${dataSheetName}] with ${dataAoa.length} rows.`, 'info');
+
+        if (dataAoa.length < 2) {
+            throw new Error(`Myntra Data sheet [${dataSheetName}] is empty or has no data rows.`);
+        }
+
+        // Locate Data header row (default row 2 / index 1 or row 1 / index 0)
+        let dataHeaderRowIndex = -1;
+        for (let i = 0; i < Math.min(dataAoa.length, 10); i++) {
+            const row = dataAoa[i];
+            if (row && row.some(cell => {
+                const str = String(cell || "").trim().toLowerCase();
+                return str.includes("seller invoice") || str.includes("seller order") || str.includes("customer order") || str.includes("order date") || str.includes("invoice");
+            })) {
+                dataHeaderRowIndex = i;
+                break;
+            }
+        }
+        if (dataHeaderRowIndex === -1) {
+            dataHeaderRowIndex = 1; // Default row 2 (index 1)
+        }
+
+        const dataHeaderRow = dataAoa[dataHeaderRowIndex] || [];
+        let invoiceColE = 4; // Column E (index 4) default
+        let dateColC = 2;    // Column C (index 2) default
+
+        for (let c = 0; c < dataHeaderRow.length; c++) {
+            const val = String(dataHeaderRow[c] || "").trim().toLowerCase().replace(/[\._\-\s]+/g, " ");
+            if ((val === "seller order no" || val === "seller invoice no" || val.includes("seller invoice") || val.includes("seller order") || val.includes("invoice no")) && !val.includes("date")) {
+                invoiceColE = c;
+            } else if ((val === "cust order date" || val === "order date" || val.includes("order date") || val.includes("cust order")) && !val.includes("invoice")) {
+                dateColC = c;
+            }
+        }
+
+        mePurchaseLog(`Myntra Data Columns: Invoice Col = Index ${invoiceColE} (Col E), Date Col = Index ${dateColC} (Col C)`, 'info');
+
+        // Build Key -> Date Map from Myntra Data File
+        const myntraDataMap = new Map();
+        for (let r = dataHeaderRowIndex + 1; r < dataAoa.length; r++) {
+            const row = dataAoa[r];
+            if (!row || row.length === 0) continue;
+            const invVal = row[invoiceColE];
+            const dateVal = row[dateColC];
+
+            const formattedDate = formatPurchaseDateVal(dateVal);
+            const cleanInv = cleanPurchaseKeyVal(invVal);
+
+            if (cleanInv && formattedDate && !myntraDataMap.has(cleanInv)) {
+                myntraDataMap.set(cleanInv, formattedDate);
+            }
+        }
+
+        mePurchaseLog(`Indexed ${myntraDataMap.size} records from Myntra Data file.`, 'success');
+
+        // Step 2: Process Each Purchase Details File
+        const zip = new JSZip();
+        const mergedWb = XLSX.utils.book_new();
+        const processedFilesList = [];
+        let overallTotalRows = 0;
+        let overallMatchedCount = 0;
+        let overallUnmatchedCount = 0;
+
+        const totalFiles = mePurchaseDetailsFiles.length;
+
+        for (let fileIdx = 0; fileIdx < totalFiles; fileIdx++) {
+            const fileObj = mePurchaseDetailsFiles[fileIdx];
+            const progressPercentVal = 20 + Math.round((fileIdx / totalFiles) * 60);
+            if (progressBar) progressBar.style.width = `${progressPercentVal}%`;
+            if (progressPercent) progressPercent.innerText = `${progressPercentVal}%`;
+            if (progressStepText) progressStepText.innerText = `Processing file ${fileIdx + 1} of ${totalFiles}: ${fileObj.name}...`;
+
+            mePurchaseLog(`Processing Purchase File [${fileIdx + 1}/${totalFiles}]: ${fileObj.name}...`, 'info');
+
+            const detailsBuffer = await readFileAsArrayBuffer(fileObj.file);
+            const detailsWb = XLSX.read(detailsBuffer, { type: 'array', cellDates: true });
+            const detailsSheetName = detailsWb.SheetNames[0];
+            const detailsWs = detailsWb.Sheets[detailsSheetName];
+            const detailsAoa = XLSX.utils.sheet_to_json(detailsWs, { header: 1, defval: "", raw: false });
+
+            if (detailsAoa.length < 2) {
+                mePurchaseLog(`Skipped [${fileObj.name}]: Sheet has no data rows.`, 'warning');
+                continue;
+            }
+
+            // Locate Details Header Row
+            let detailsHeaderRowIndex = -1;
+            for (let i = 0; i < Math.min(detailsAoa.length, 5); i++) {
+                const row = detailsAoa[i];
+                if (row && row.some(cell => {
+                    const str = String(cell || "").trim().toLowerCase();
+                    return str.includes("sale invoice") || str.includes("invoice no") || str.includes("order id");
+                })) {
+                    detailsHeaderRowIndex = i;
+                    break;
+                }
+            }
+            if (detailsHeaderRowIndex === -1) {
+                detailsHeaderRowIndex = 1; // Default row 2 (index 1)
+            }
+
+            const detailsHeaderRow = detailsAoa[detailsHeaderRowIndex] || [];
+            let invoiceColB = 1; // Column B (index 1) default
+
+            for (let c = 0; c < detailsHeaderRow.length; c++) {
+                const val = String(detailsHeaderRow[c] || "").trim().toLowerCase().replace(/[\._\-\s]+/g, " ");
+                if ((val === "sale invoice no" || val === "invoice no" || val.includes("invoice no") || val.includes("sale invoice")) && !val.includes("date")) {
+                    invoiceColB = c;
+                }
+            }
+
+            // Ensure Column O (index 14) in header row is "Order date"
+            while (detailsHeaderRow.length < 15) {
+                detailsHeaderRow.push("");
+            }
+            detailsHeaderRow[14] = "Order date";
+
+            const updatedFileAoa = [];
+            // Preserve title row(s) before header row
+            for (let r = 0; r < detailsHeaderRowIndex; r++) {
+                const titleRow = [...(detailsAoa[r] || [])];
+                while (titleRow.length < 15) titleRow.push("");
+                updatedFileAoa.push(titleRow);
+            }
+            updatedFileAoa.push(detailsHeaderRow);
+
+            let fileTotalRows = 0;
+            let fileMatchedCount = 0;
+            let fileUnmatchedCount = 0;
+
+            for (let r = detailsHeaderRowIndex + 1; r < detailsAoa.length; r++) {
+                const rawRow = detailsAoa[r];
+                if (!rawRow || rawRow.every(c => String(c || "").trim() === "")) continue;
+
+                const row = [...rawRow];
+                while (row.length < 15) row.push("");
+
+                // Pure text conversions for Item Asin (Col E / index 4), Order ID (Col D / index 3), Invoice No (Col B / index 1)
+                if (row[4] !== undefined && row[4] !== null) row[4] = toPureText(row[4]);
+                if (row[3] !== undefined && row[3] !== null) row[3] = toPureText(row[3]);
+                if (row[1] !== undefined && row[1] !== null) row[1] = toPureText(row[1]);
+
+                // Rule: Take Invoice No from Column B (index 1), find in Myntra Data map (Col E), write to Column O (index 14)
+                const invoiceNoVal = row[invoiceColB];
+                const cleanInv = cleanPurchaseKeyVal(invoiceNoVal);
+
+                let matchedDate = myntraDataMap.get(cleanInv);
+
+                if (matchedDate) {
+                    row[14] = matchedDate; // Write into Column O (index 14)
+                    fileMatchedCount++;
+                } else {
+                    row[14] = "";
+                    fileUnmatchedCount++;
+                }
+                fileTotalRows++;
+                updatedFileAoa.push(row);
+            }
+
+            overallTotalRows += fileTotalRows;
+            overallMatchedCount += fileMatchedCount;
+            overallUnmatchedCount += fileUnmatchedCount;
+
+            // Convert to Worksheet and apply formatting
+            const fileWs = XLSX.utils.aoa_to_sheet(updatedFileAoa);
+            if (detailsHeaderRowIndex > 0) {
+                fileWs['!merges'] = [
+                    { s: { r: 0, c: 0 }, e: { r: 0, c: 14 } }
+                ];
+            }
+            formatPurchaseWorksheet(fileWs);
+
+            const cleanSheetName = getSafeSheetName(fileObj.name.replace(/\.[^/.]+$/, ""));
+
+            // Save single file workbook
+            const singleWb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(singleWb, fileWs, cleanSheetName);
+            const singleBuffer = XLSX.write(singleWb, { bookType: 'xlsx', type: 'array' });
+            const singleBlob = new Blob([singleBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+
+            // Add to ZIP and Merged Workbook
+            zip.file(fileObj.name, singleBuffer);
+            
+            let mergedSheetName = cleanSheetName;
+            let dupIndex = 1;
+            while (mergedWb.SheetNames.includes(mergedSheetName)) {
+                mergedSheetName = getSafeSheetName(`${cleanSheetName}_${dupIndex++}`);
+            }
+            XLSX.utils.book_append_sheet(mergedWb, fileWs, mergedSheetName);
+
+            processedFilesList.push({
+                name: fileObj.name,
+                sheetName: mergedSheetName,
+                blob: singleBlob,
+                totalRows: fileTotalRows,
+                matched: fileMatchedCount,
+                unmatched: fileUnmatchedCount,
+                aoa: updatedFileAoa
+            });
+
+            // Register into Error Dispute Tracker
+            const partyOrWhName = fileObj.name.replace(/\.[^/.]+$/, "").replace(/price dispute/gi, "").replace(/[-_]+/g, " ").trim() || fileObj.name;
+            registerTrackedError('purchase', fileObj.name, partyOrWhName, 'Purchase Price Dispute', fileTotalRows);
+
+            mePurchaseLog(`[${fileObj.name}] Done: ${fileTotalRows} rows (${fileMatchedCount} dates matched, ${fileUnmatchedCount} unmatched)`, fileMatchedCount > 0 ? 'success' : 'warning');
+        }
+
+        if (processedFilesList.length === 0) {
+            throw new Error('No Purchase Details files could be processed.');
+        }
+
+        // Step 3: Finalize Merged Excel & ZIP Bundle
+        if (progressBar) progressBar.style.width = '85%';
+        if (progressPercent) progressPercent.innerText = '85%';
+        if (progressStepText) progressStepText.innerText = 'Finalizing Merged Excel and ZIP package...';
+
+        const timestampStr = new Date().toISOString().slice(0, 10).replace(/[-:]/g, '_');
+        mePurchaseMergedFilename = `Merged_Purchase_Disputes_${timestampStr}.xlsx`;
+        mePurchaseZipFilename = `myntra_purchase_dispute_bundle_${timestampStr}.zip`;
+
+        const mergedBuffer = XLSX.write(mergedWb, { bookType: 'xlsx', type: 'array' });
+        mePurchaseMergedBlob = new Blob([mergedBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        zip.file(mePurchaseMergedFilename, mergedBuffer);
+
+        mePurchaseZipBlob = await zip.generateAsync({ type: 'blob' });
+
+        if (progressBar) progressBar.style.width = '100%';
+        if (progressPercent) progressPercent.innerText = '100% Completed';
+        if (progressStepText) progressStepText.innerText = 'All purchase files processed successfully!';
+
+        mePurchaseLog(`Successfully completed! ${processedFilesList.length} files processed. Total: ${overallTotalRows} rows (${overallMatchedCount} dates matched).`, 'success');
+        mePurchaseLog(`Merged Excel created: "${mePurchaseMergedFilename}" (${formatBytes(mePurchaseMergedBlob.size)})`, 'success');
+        mePurchaseLog(`ZIP Package created: "${mePurchaseZipFilename}" (${formatBytes(mePurchaseZipBlob.size)})`, 'success');
+
+        // Step 4: Render Results Dashboard
+        renderMePurchaseDashboard(
+            processedFilesList,
+            mePurchaseMergedBlob,
+            mePurchaseZipFilename,
+            mePurchaseMergedFilename,
+            {
+                totalFiles: processedFilesList.length,
+                totalRows: overallTotalRows,
+                totalMatched: overallMatchedCount,
+                totalUnmatched: overallUnmatchedCount
+            }
+        );
+
+        showToast(`Purchase Error Process Completed! ${overallMatchedCount} of ${overallTotalRows} records matched.`, 'success');
+
+    } catch (err) {
+        console.error('Purchase process error:', err);
+        mePurchaseLog(`Purchase process failed: ${err.message}`, 'error');
+        showToast(`Purchase process error: ${err.message}`, 'error');
+        if (container) {
+            container.innerHTML = `
+                <div class="empty-output-state">
+                    <i class="fa-solid fa-circle-exclamation placeholder-icon" style="color: #ef4444;"></i>
+                    <p style="color: #ef4444; font-weight: 600;">Error: ${err.message}</p>
+                </div>
+            `;
+        }
+    } finally {
+        if (btn) btn.removeAttribute('disabled');
+    }
+}
+
+/* ==========================================================================
+   LOSS REPORT / LOSS ERROR LOGIC (MYNTRA)
+   ========================================================================== */
+let leDetailsFiles = [];
+let leDataFile = null;
+let leZipBlob = null;
+let leZipFilename = "";
+let leMergedBlob = null;
+let leMergedFilename = "";
+
+function leLog(message, type = 'info') {
+    const consoleLog = document.getElementById('leConsoleLog');
+    if (!consoleLog) return;
+    const line = document.createElement('div');
+    line.className = `log-line ${type}`;
+    const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    line.innerText = `[${timestamp}] ${message}`;
+    if (consoleLog.children.length > 300) {
+        consoleLog.removeChild(consoleLog.firstChild);
+    }
+    consoleLog.appendChild(line);
+    consoleLog.scrollTop = consoleLog.scrollHeight;
+}
+
+function checkLeInputs() {
+    const btn = document.getElementById('leBtn');
+    if (leDetailsFiles.length > 0 && leDataFile) {
+        if (btn) btn.removeAttribute('disabled');
+    } else {
+        if (btn) btn.setAttribute('disabled', 'true');
+    }
+}
+
+function updateLeDetailsUI() {
+    const countEl = document.getElementById('leDetailsSelectedCount');
+    const listEl = document.getElementById('leDetailsUploadedFileList');
+    if (countEl) countEl.innerText = leDetailsFiles.length;
+    if (!listEl) return;
+
+    if (leDetailsFiles.length > 0) {
+        listEl.innerHTML = '';
+        leDetailsFiles.forEach((fileObj) => {
+            const item = document.createElement('div');
+            item.className = 'file-item';
+
+            const info = document.createElement('div');
+            info.className = 'file-info';
+
+            const icon = document.createElement('i');
+            icon.className = getFileIconClass(fileObj.name);
+
+            const nameSpan = document.createElement('span');
+            nameSpan.className = 'file-name';
+            nameSpan.innerText = fileObj.name;
+
+            const sizeSpan = document.createElement('span');
+            sizeSpan.className = 'file-size';
+            sizeSpan.innerText = formatBytes(fileObj.size);
+
+            info.appendChild(icon);
+            info.appendChild(nameSpan);
+            info.appendChild(sizeSpan);
+
+            const removeBtn = document.createElement('button');
+            removeBtn.className = 'file-action-btn';
+            removeBtn.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+            removeBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                leDetailsFiles = leDetailsFiles.filter(f => f.id !== fileObj.id);
+                leLog(`Removed file: ${fileObj.name}`, 'info');
+                updateLeDetailsUI();
+                checkLeInputs();
+            });
+
+            item.appendChild(info);
+            item.appendChild(removeBtn);
+            listEl.appendChild(item);
+        });
+    } else {
+        listEl.innerHTML = '<div class="empty-list-msg" style="font-size: 0.75rem; color: var(--text-muted); text-align: center; padding: 0.5rem;">No loss files selected yet.</div>';
+    }
+    checkLeInputs();
+}
+
+function setupLossError() {
+    const detailsDropzone = document.getElementById('leDetailsDropzone');
+    const detailsInput = document.getElementById('leDetailsFileInput');
+    const clearBtn = document.getElementById('clearLeDetailsFilesBtn');
+    const dataDropzone = document.getElementById('leDataDropzone');
+    const dataInput = document.getElementById('leDataFileInput');
+    const btn = document.getElementById('leBtn');
+    const clearLogBtn = document.getElementById('clearLeLogBtn');
+
+    if (detailsDropzone && detailsInput) {
+        setupMultiDropzone(detailsDropzone, detailsInput, (files) => {
+            let added = 0;
+            files.forEach(file => {
+                if (!leDetailsFiles.some(f => f.name === file.name && f.size === file.size)) {
+                    leDetailsFiles.push({
+                        id: Date.now() + '-' + Math.random().toString(36).substr(2, 9),
+                        name: file.name,
+                        size: file.size,
+                        file: file
+                    });
+                    added++;
+                }
+            });
+            if (added > 0) {
+                leLog(`Added ${added} Loss Details file(s). Total: ${leDetailsFiles.length}`, 'success');
+            }
+            updateLeDetailsUI();
+        });
+    }
+
+    if (clearBtn) {
+        clearBtn.addEventListener('click', () => {
+            leDetailsFiles = [];
+            if (detailsInput) detailsInput.value = '';
+            updateLeDetailsUI();
+            leLog('Cleared all selected Loss Details files.', 'info');
+        });
+    }
+
+    if (dataDropzone && dataInput) {
+        setupMiniDropzone(dataDropzone, dataInput, (file) => {
+            leDataFile = file;
+            const display = document.getElementById('leDataFileDisplay');
+            if (display) {
+                display.innerText = file.name;
+                display.title = file.name;
+            }
+            dataDropzone.classList.add('file-selected');
+            leLog(`Selected Myntra Data File: ${file.name} (${formatBytes(file.size)})`, 'info');
+            checkLeInputs();
+        });
+    }
+
+    if (clearLogBtn) {
+        clearLogBtn.addEventListener('click', () => {
+            const consoleLog = document.getElementById('leConsoleLog');
+            if (consoleLog) {
+                consoleLog.innerHTML = '';
+                leLog('Log cleared.', 'info');
+            }
+        });
+    }
+
+    if (btn) {
+        btn.addEventListener('click', runLossErrorProcess);
+    }
+}
+
+function formatLossWorksheet(ws) {
+    if (!ws || !ws['!ref']) return;
+    const range = XLSX.utils.decode_range(ws['!ref']);
+    const cols = [];
+
+    for (let C = range.s.c; C <= range.e.c; ++C) {
+        cols.push({ wch: 12 });
+    }
+
+    for (let R = range.s.r; R <= range.e.r; ++R) {
+        if (R === 0 && ws['!merges'] && ws['!merges'].length > 0) {
+            continue; // Skip title banner row for col width calc
+        }
+        for (let C = range.s.c; C <= range.e.c; ++C) {
+            const cell_address = { c: C, r: R };
+            const cell_ref = XLSX.utils.encode_cell(cell_address);
+            const cell = ws[cell_ref];
+            if (cell && cell.v !== undefined && cell.v !== null) {
+                const len = String(cell.v).length;
+                if (len > cols[C].wch) cols[C].wch = len;
+            }
+        }
+    }
+
+    cols.forEach((col, idx) => {
+        if (idx === 5) {
+            col.wch = Math.min(Math.max(col.wch + 4, 15), 25); // Order date (Col F)
+        } else if (idx === 1) {
+            col.wch = Math.min(Math.max(col.wch + 3, 16), 30); // Order ID (Col B)
+        } else if (idx === 6 || idx === 0) {
+            col.wch = Math.min(Math.max(col.wch + 3, 16), 30); // Invoice IDs
+        } else {
+            col.wch = Math.min(Math.max(col.wch + 3, 12), 35);
+        }
+    });
+    ws['!cols'] = cols;
+
+    for (let R = range.s.r; R <= range.e.r; ++R) {
+        for (let C = range.s.c; C <= range.e.c; ++C) {
+            const cell_address = { c: C, r: R };
+            const cell_ref = XLSX.utils.encode_cell(cell_address);
+            if (!ws[cell_ref]) {
+                ws[cell_ref] = { t: 's', v: '' };
+            }
+            const cell = ws[cell_ref];
+            const isTitle = (R === 0);
+            const isHeader = (R === 1);
+            const isData = (R >= 2);
+
+            cell.s = {
+                border: {
+                    top: { style: 'thin', color: { rgb: 'E5E7EB' } },
+                    bottom: { style: 'thin', color: { rgb: 'E5E7EB' } },
+                    left: { style: 'thin', color: { rgb: 'E5E7EB' } },
+                    right: { style: 'thin', color: { rgb: 'E5E7EB' } }
+                }
+            };
+
+            if (isTitle) {
+                cell.s.font = { name: 'Segoe UI', sz: 12, bold: true, color: { rgb: 'FFFFFF' } };
+                cell.s.fill = { fgColor: { rgb: 'E11D48' } }; // Rose banner
+                cell.s.alignment = { horizontal: 'center', vertical: 'center' };
+            } else if (isHeader) {
+                cell.s.font = { name: 'Segoe UI', sz: 10, bold: true, color: { rgb: '1E293B' } };
+                if (C === 5) {
+                    cell.s.fill = { fgColor: { rgb: 'DCFCE7' } }; // Light Green for Order Date (Col F)
+                    cell.s.font = { name: 'Segoe UI', sz: 10, bold: true, color: { rgb: '15803D' } };
+                } else {
+                    cell.s.fill = { fgColor: { rgb: 'F1F5F9' } };
+                }
+                cell.s.alignment = { horizontal: (C === 1 || C === 5) ? 'center' : 'left', vertical: 'center' };
+            } else if (isData) {
+                cell.s.font = { name: 'Segoe UI', sz: 9.5, color: { rgb: '334155' } };
+                
+                // Col B: Order ID (Pure text formatting)
+                if (C === 1) {
+                    cell.t = 's';
+                    cell.z = '@';
+                    cell.v = toPureText(cell.v);
+                    cell.s.alignment = { horizontal: 'center', vertical: 'center' };
+                }
+                // Col F: Order date
+                else if (C === 5) {
+                    cell.t = 's';
+                    cell.z = '@';
+                    cell.s.alignment = { horizontal: 'center', vertical: 'center' };
+                    if (cell.v && String(cell.v).trim() !== '') {
+                        cell.s.font = { name: 'Segoe UI', sz: 9.5, bold: true, color: { rgb: '15803D' } };
+                    }
+                }
+                // Numerical amount columns (C, D, E)
+                else if (C === 2 || C === 3 || C === 4) {
+                    cell.s.alignment = { horizontal: 'right', vertical: 'center' };
+                }
+                // Invoice IDs
+                else {
+                    cell.s.alignment = { horizontal: 'left', vertical: 'center' };
+                }
+            }
+        }
+    }
+}
+
+function renderLeDashboard(filesList, mergedBlob, zipFilename, mergedFilename, stats) {
+    const container = document.getElementById('leOutputContainer');
+    if (!container) return;
+    container.innerHTML = '';
+    container.className = 'processed-container';
+
+    // 1. Stats Cards
+    const statsRow = document.createElement('div');
+    statsRow.className = 'stats-card-grid';
+    statsRow.style.display = 'grid';
+    statsRow.style.gridTemplateColumns = 'repeat(auto-fit, minmax(130px, 1fr))';
+    statsRow.style.gap = '0.75rem';
+    statsRow.style.marginBottom = '1.25rem';
+
+    statsRow.innerHTML = `
+        <div style="background: white; border: 1px solid var(--border-color); border-radius: 10px; padding: 0.85rem; box-shadow: 0 1px 3px rgba(0,0,0,0.03);">
+            <div style="font-size: 0.72rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase;">Total Files</div>
+            <div style="font-size: 1.4rem; font-weight: 800; color: #e11d48; margin-top: 0.2rem;">${stats.totalFiles}</div>
+        </div>
+        <div style="background: white; border: 1px solid var(--border-color); border-radius: 10px; padding: 0.85rem; box-shadow: 0 1px 3px rgba(0,0,0,0.03);">
+            <div style="font-size: 0.72rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase;">Total Rows</div>
+            <div style="font-size: 1.4rem; font-weight: 800; color: #1e293b; margin-top: 0.2rem;">${stats.totalRows}</div>
+        </div>
+        <div style="background: white; border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 10px; padding: 0.85rem; background: rgba(240, 253, 244, 0.6); box-shadow: 0 1px 3px rgba(0,0,0,0.03);">
+            <div style="font-size: 0.72rem; color: #15803d; font-weight: 600; text-transform: uppercase;">Dates Matched</div>
+            <div style="font-size: 1.4rem; font-weight: 800; color: #15803d; margin-top: 0.2rem;">${stats.totalMatched}</div>
+        </div>
+        <div style="background: white; border: 1px solid ${stats.totalUnmatched > 0 ? 'rgba(245, 158, 11, 0.3)' : 'var(--border-color)'}; border-radius: 10px; padding: 0.85rem; background: ${stats.totalUnmatched > 0 ? 'rgba(254, 243, 199, 0.5)' : 'white'}; box-shadow: 0 1px 3px rgba(0,0,0,0.03);">
+            <div style="font-size: 0.72rem; color: ${stats.totalUnmatched > 0 ? '#b45309' : 'var(--text-muted)'}; font-weight: 600; text-transform: uppercase;">Unmatched</div>
+            <div style="font-size: 1.4rem; font-weight: 800; color: ${stats.totalUnmatched > 0 ? '#b45309' : '#64748b'}; margin-top: 0.2rem;">${stats.totalUnmatched}</div>
+        </div>
+    `;
+    container.appendChild(statsRow);
+
+    // 2. Action Download Bar
+    const actionsBar = document.createElement('div');
+    actionsBar.style.display = 'flex';
+    actionsBar.style.flexWrap = 'wrap';
+    actionsBar.style.gap = '0.75rem';
+    actionsBar.style.marginBottom = '1.25rem';
+
+    actionsBar.innerHTML = `
+        <button type="button" class="btn btn-primary" id="leDownloadZipBtn" style="flex: 1; min-width: 200px; display: flex; align-items: center; justify-content: center; gap: 0.5rem; padding: 0.65rem 1.2rem; font-weight: 700; border-radius: 8px; background: linear-gradient(135deg, #e11d48, #be123c); cursor: pointer; color: white; border: none;">
+            <i class="fa-solid fa-file-zipper"></i> Download ZIP Package
+        </button>
+        <button type="button" class="btn btn-success" id="leDownloadMergedBtn" style="flex: 1; min-width: 200px; display: flex; align-items: center; justify-content: center; gap: 0.5rem; padding: 0.65rem 1.2rem; font-weight: 700; border-radius: 8px; background: linear-gradient(135deg, #059669, #10b981); cursor: pointer; color: white; border: none;">
+            <i class="fa-solid fa-file-excel"></i> Download Merged Excel (${filesList.length} Sheets)
+        </button>
+    `;
+    container.appendChild(actionsBar);
+
+    // Bind Download Buttons
+    const dlZipBtn = actionsBar.querySelector('#leDownloadZipBtn');
+    if (dlZipBtn) {
+        dlZipBtn.addEventListener('click', () => {
+            if (leZipBlob) {
+                triggerDownload(leZipBlob, zipFilename);
+                leLog(`Downloaded complete ZIP package: ${zipFilename}`, 'info');
+            }
+        });
+    }
+
+    const dlMergedBtn = actionsBar.querySelector('#leDownloadMergedBtn');
+    if (dlMergedBtn) {
+        dlMergedBtn.addEventListener('click', () => {
+            if (mergedBlob) {
+                triggerDownload(mergedBlob, mergedFilename);
+                leLog(`Downloaded Merged Excel file: ${mergedFilename}`, 'info');
+            }
+        });
+    }
+
+    // 3. Processed Files Table Card
+    const tableCard = document.createElement('div');
+    tableCard.style.background = 'white';
+    tableCard.style.border = '1px solid var(--border-color)';
+    tableCard.style.borderRadius = '12px';
+    tableCard.style.overflow = 'hidden';
+    tableCard.style.boxShadow = '0 1px 3px rgba(0,0,0,0.03)';
+
+    const tableHeader = document.createElement('div');
+    tableHeader.style.padding = '0.75rem 1rem';
+    tableHeader.style.borderBottom = '1px solid var(--border-color)';
+    tableHeader.style.background = '#f8fafc';
+    tableHeader.style.display = 'flex';
+    tableHeader.style.justifyContent = 'space-between';
+    tableHeader.style.alignItems = 'center';
+    tableHeader.innerHTML = `
+        <span style="font-size: 0.85rem; font-weight: 700; color: #1e293b;"><i class="fa-solid fa-table-list text-rose" style="color: #e11d48;"></i> Processed Loss Details Files (${filesList.length})</span>
+        <span style="font-size: 0.75rem; color: var(--text-muted);">Column F (Order date) successfully updated</span>
+    `;
+    tableCard.appendChild(tableHeader);
+
+    const tableWrap = document.createElement('div');
+    tableWrap.style.overflowX = 'auto';
+    tableWrap.style.overflowY = 'auto';
+    tableWrap.style.maxHeight = '280px';
+    tableWrap.style.webkitOverflowScrolling = 'touch';
+
+    const table = document.createElement('table');
+    table.className = 'preview-table';
+    table.style.width = '100%';
+    table.style.minWidth = '720px';
+    table.style.fontSize = '0.82rem';
+
+    table.innerHTML = `
+        <thead style="position: sticky; top: 0; z-index: 2; background: #f8fafc;">
+            <tr>
+                <th style="width: 40px; text-align: center; background: #f8fafc;">#</th>
+                <th style="background: #f8fafc;">Details File Name</th>
+                <th style="background: #f8fafc;">Sheet Name</th>
+                <th style="text-align: center; background: #f8fafc;">Total Rows</th>
+                <th style="text-align: center; background: #f8fafc;">Matched Dates</th>
+                <th style="text-align: center; background: #f8fafc;">Unmatched</th>
+                <th style="text-align: center; background: #f8fafc;">Status</th>
+                <th style="text-align: center; width: 140px; background: #f8fafc;">Actions</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    `;
+
+    const tbody = table.querySelector('tbody');
+    filesList.forEach((file, idx) => {
+        const tr = document.createElement('tr');
+        const matchRate = file.totalRows > 0 ? Math.round((file.matched / file.totalRows) * 100) : 0;
+        const isFullMatch = file.unmatched === 0;
+
+        tr.innerHTML = `
+            <td style="text-align: center; font-weight: 700; color: var(--text-muted);">${idx + 1}</td>
+            <td style="font-weight: 600; color: var(--text-primary);">
+                <i class="fa-solid fa-file-excel text-rose" style="color: #e11d48; margin-right: 0.35rem;"></i>
+                ${file.name}
+            </td>
+            <td style="color: #64748b; font-family: monospace; font-size: 0.78rem;">[${file.sheetName}]</td>
+            <td style="text-align: center; font-weight: 700;">${file.totalRows}</td>
+            <td style="text-align: center; font-weight: 700; color: #15803d;">${file.matched}</td>
+            <td style="text-align: center; font-weight: 700; color: ${file.unmatched > 0 ? '#b45309' : '#64748b'};">${file.unmatched}</td>
+            <td style="text-align: center;">
+                <span style="font-size: 0.72rem; font-weight: 700; padding: 0.2rem 0.5rem; border-radius: 6px; background: ${isFullMatch ? '#dcfce7' : '#fef3c7'}; color: ${isFullMatch ? '#15803d' : '#b45309'}; border: 1px solid ${isFullMatch ? '#86efac' : '#fde68a'};">
+                    ${matchRate}% Matched
+                </span>
+            </td>
+            <td style="text-align: center;">
+                <div style="display: flex; gap: 0.35rem; justify-content: center;">
+                    <button type="button" class="btn le-dl-single" style="padding: 0.3rem 0.6rem; font-size: 0.75rem; border-radius: 6px; background: #ffe4e6; color: #e11d48; border: 1px solid #fecdd3; cursor: pointer;" title="Download this file">
+                        <i class="fa-solid fa-download"></i>
+                    </button>
+                    <button type="button" class="btn le-preview-single" style="padding: 0.3rem 0.6rem; font-size: 0.75rem; border-radius: 6px; background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; cursor: pointer;" title="Preview Excel data">
+                        <i class="fa-solid fa-eye"></i>
+                    </button>
+                </div>
+            </td>
+        `;
+
+        const dlBtn = tr.querySelector('.le-dl-single');
+        if (dlBtn) {
+            dlBtn.addEventListener('click', () => {
+                triggerDownload(file.blob, file.name);
+                leLog(`Downloaded: ${file.name}`, 'info');
+            });
+        }
+
+        const prevBtn = tr.querySelector('.le-preview-single');
+        if (prevBtn) {
+            prevBtn.addEventListener('click', () => {
+                openRenFileInspector({
+                    name: file.name,
+                    fileObj: file.blob,
+                    parsedAOA: file.aoa
+                });
+            });
+        }
+
+        tbody.appendChild(tr);
+    });
+
+    tableWrap.appendChild(table);
+    tableCard.appendChild(tableWrap);
+    container.appendChild(tableCard);
+}
+
+async function runLossErrorProcess() {
+    if (leDetailsFiles.length === 0 || !leDataFile) return;
+
+    const btn = document.getElementById('leBtn');
+    const progressCard = document.getElementById('leProgressCard');
+    const progressBar = document.getElementById('leProgressBar');
+    const progressPercent = document.getElementById('leProgressPercent');
+    const progressStepText = document.getElementById('leProgressStepText');
+    const container = document.getElementById('leOutputContainer');
+
+    if (btn) btn.setAttribute('disabled', 'true');
+    if (progressCard) progressCard.classList.remove('hidden');
+    if (progressBar) progressBar.style.width = '5%';
+    if (progressPercent) progressPercent.innerText = '5%';
+    if (progressStepText) progressStepText.innerText = 'Reading Myntra Data file...';
+
+    if (container) {
+        container.innerHTML = `
+            <div class="empty-output-state">
+                <i class="fa-solid fa-spinner fa-spin placeholder-icon" style="color: #e11d48;"></i>
+                <p>Processing Loss Details and matching with Myntra Data file...</p>
+            </div>
+        `;
+    }
+
+    try {
+        leLog('Starting Loss Error Process...', 'process');
+        leLog(`Selected Details Files: ${leDetailsFiles.length}`, 'info');
+        leLog(`Selected Myntra Data File: ${leDataFile.name}`, 'info');
+
+        // Step 1: Read and Index the Myntra Data File (Col E -> Col C)
+        if (progressBar) progressBar.style.width = '12%';
+        if (progressPercent) progressPercent.innerText = '12%';
+        if (progressStepText) progressStepText.innerText = 'Parsing Myntra Data spreadsheet...';
+
+        const dataBuffer = await readFileAsArrayBuffer(leDataFile);
+        const dataWb = XLSX.read(dataBuffer, { type: 'array', cellDates: true });
+        
+        let dataSheetName = dataWb.SheetNames[0];
+        for (const sName of dataWb.SheetNames) {
+            const low = sName.toLowerCase();
+            if (low.includes('data') || low.includes('myntra')) {
+                dataSheetName = sName;
+                break;
+            }
+        }
+
+        const dataWs = dataWb.Sheets[dataSheetName];
+        const dataAoa = XLSX.utils.sheet_to_json(dataWs, { header: 1, defval: "" });
+        leLog(`Loaded Myntra Data sheet [${dataSheetName}] with ${dataAoa.length} rows.`, 'info');
+
+        if (dataAoa.length < 2) {
+            throw new Error(`Myntra Data sheet [${dataSheetName}] is empty or has no data rows.`);
+        }
+
+        // Locate Data header row
+        let dataHeaderRowIndex = -1;
+        for (let i = 0; i < Math.min(dataAoa.length, 10); i++) {
+            const row = dataAoa[i];
+            if (row && row.some(cell => {
+                const str = String(cell || "").trim().toLowerCase();
+                return str.includes("seller invoice") || str.includes("seller order") || str.includes("customer order") || str.includes("order date") || str.includes("invoice");
+            })) {
+                dataHeaderRowIndex = i;
+                break;
+            }
+        }
+        if (dataHeaderRowIndex === -1) {
+            dataHeaderRowIndex = 1; // Default row 2 (index 1)
+        }
+
+        const dataHeaderRow = dataAoa[dataHeaderRowIndex] || [];
+        let invoiceColE = 4; // Column E default
+        let dateColC = 2;    // Column C default
+
+        for (let c = 0; c < dataHeaderRow.length; c++) {
+            const val = String(dataHeaderRow[c] || "").trim().toLowerCase().replace(/[\._\-\s]+/g, " ");
+            if ((val === "seller order no" || val === "seller invoice no" || val.includes("seller invoice") || val.includes("seller order") || val.includes("invoice no")) && !val.includes("date")) {
+                invoiceColE = c;
+            } else if ((val === "cust order date" || val === "order date" || val.includes("order date") || val.includes("cust order")) && !val.includes("invoice")) {
+                dateColC = c;
+            }
+        }
+
+        leLog(`Myntra Data Columns: Invoice Col = Index ${invoiceColE} (Col E), Date Col = Index ${dateColC} (Col C)`, 'info');
+
+        // Build Key -> Date Map from Myntra Data
+        const myntraDataMap = new Map();
+        for (let r = dataHeaderRowIndex + 1; r < dataAoa.length; r++) {
+            const row = dataAoa[r];
+            if (!row || row.length === 0) continue;
+            const invVal = row[invoiceColE];
+            const dateVal = row[dateColC];
+
+            const formattedDate = formatLossDateVal(dateVal);
+            const cleanInv = cleanLossKeyVal(invVal);
+
+            if (cleanInv && formattedDate && !myntraDataMap.has(cleanInv)) {
+                myntraDataMap.set(cleanInv, formattedDate);
+            }
+        }
+
+        leLog(`Indexed ${myntraDataMap.size} records from Myntra Data file.`, 'success');
+
+        // Step 2: Process Each Loss Details File
+        const zip = new JSZip();
+        const mergedWb = XLSX.utils.book_new();
+        const usedSheetNames = new Set();
+        const processedFilesList = [];
+
+        let totalProcessedRows = 0;
+        let totalMatchedDates = 0;
+        let totalUnmatchedDates = 0;
+
+        for (let fIdx = 0; fIdx < leDetailsFiles.length; fIdx++) {
+            const fileObj = leDetailsFiles[fIdx];
+            const progressVal = Math.round(20 + ((fIdx + 1) / leDetailsFiles.length) * 60);
+            if (progressBar) progressBar.style.width = `${progressVal}%`;
+            if (progressPercent) progressPercent.innerText = `${progressVal}%`;
+            if (progressStepText) progressStepText.innerText = `Processing [${fIdx + 1}/${leDetailsFiles.length}] ${fileObj.name}...`;
+
+            leLog(`[${fIdx + 1}/${leDetailsFiles.length}] Processing Loss file: "${fileObj.name}"...`, 'process');
+
+            const fileBuffer = await readFileAsArrayBuffer(fileObj.file);
+            const fileWb = XLSX.read(fileBuffer, { type: 'array', cellDates: true });
+            const fileWs = fileWb.Sheets[fileWb.SheetNames[0]];
+            const fileAoa = XLSX.utils.sheet_to_json(fileWs, { header: 1, defval: "" });
+
+            if (fileAoa.length === 0) {
+                leLog(`Warning: File "${fileObj.name}" is completely empty. Skipping.`, 'warning');
+                continue;
+            }
+
+            const baseFileName = fileObj.name.replace(/\.[^/.]+$/, "").trim();
+
+            // Detect Header Row vs Title Row
+            let headerRowIndex = 0;
+            let hasExistingTitle = false;
+
+            for (let i = 0; i < Math.min(fileAoa.length, 5); i++) {
+                const row = fileAoa[i] || [];
+                const isHeader = row.some(cell => {
+                    const str = String(cell || "").trim().toLowerCase();
+                    return str.includes("invoice id") || str.includes("order id") || str.includes("sale price") || str.includes("difference") || str.includes("sale invoice");
+                });
+                if (isHeader) {
+                    headerRowIndex = i;
+                    if (i > 0) hasExistingTitle = true;
+                    break;
+                }
+            }
+
+            let workingAoa = [];
+
+            if (!hasExistingTitle) {
+                // Row 1: Merged Title banner with file name
+                workingAoa.push([baseFileName, "", "", "", "", "", ""]);
+                // Row 2: Headers
+                const originalHeaders = fileAoa[headerRowIndex] || [];
+                const standardHeaders = [
+                    originalHeaders[0] || "Invoice ID",
+                    originalHeaders[1] || "Order ID",
+                    originalHeaders[2] || "Sale Price/Amt",
+                    originalHeaders[3] || "Purchase Price/Amt",
+                    originalHeaders[4] || "Difference",
+                    "Order date", // Col F (index 5)
+                    originalHeaders[6] || originalHeaders[5] || "Sale Invoice ID" // Col G (index 6)
+                ];
+                workingAoa.push(standardHeaders);
+
+                // Data rows starting from original index + 1
+                for (let r = headerRowIndex + 1; r < fileAoa.length; r++) {
+                    const origRow = fileAoa[r];
+                    if (!origRow || origRow.length === 0 || origRow.every(c => c === "" || c === null || c === undefined)) continue;
+                    
+                    const newRow = [
+                        origRow[0] !== undefined ? origRow[0] : "",
+                        origRow[1] !== undefined ? origRow[1] : "",
+                        origRow[2] !== undefined ? origRow[2] : "",
+                        origRow[3] !== undefined ? origRow[3] : "",
+                        origRow[4] !== undefined ? origRow[4] : "",
+                        "", // Order date placeholder (Col F / index 5)
+                        origRow[6] !== undefined ? origRow[6] : (origRow[5] !== undefined ? origRow[5] : "") // Sale Invoice ID (Col G / index 6)
+                    ];
+                    workingAoa.push(newRow);
+                }
+            } else {
+                workingAoa.push([baseFileName, "", "", "", "", "", ""]);
+                const headerRow = fileAoa[headerRowIndex] || [];
+                while (headerRow.length < 7) headerRow.push("");
+                headerRow[5] = "Order date";
+                if (!headerRow[6] || String(headerRow[6]).trim() === "") {
+                    headerRow[6] = "Sale Invoice ID";
+                }
+                workingAoa.push(headerRow);
+
+                for (let r = headerRowIndex + 1; r < fileAoa.length; r++) {
+                    const origRow = fileAoa[r];
+                    if (!origRow || origRow.length === 0 || origRow.every(c => c === "" || c === null || c === undefined)) continue;
+                    while (origRow.length < 7) origRow.push("");
+                    workingAoa.push([...origRow]);
+                }
+            }
+
+            // Locate Column Positions
+            const headerCells = workingAoa[1] || [];
+            let colG_SaleInvoice = 6; // Col G default
+            let colB_OrderId = 1;     // Col B default
+            let colF_OrderDate = 5;   // Col F default
+
+            for (let c = 0; c < headerCells.length; c++) {
+                const hVal = String(headerCells[c] || "").trim().toLowerCase();
+                if (hVal.includes("sale invoice") || hVal.includes("invoice id")) {
+                    if (c >= 5) colG_SaleInvoice = c;
+                } else if (hVal.includes("order id") || hVal === "order no") {
+                    colB_OrderId = c;
+                } else if (hVal.includes("order date") || hVal.includes("cust order date")) {
+                    colF_OrderDate = c;
+                }
+            }
+
+            workingAoa[1][colF_OrderDate] = "Order date";
+
+            let fileMatched = 0;
+            let fileUnmatched = 0;
+            let fileTotalRows = 0;
+
+            for (let r = 2; r < workingAoa.length; r++) {
+                const row = workingAoa[r];
+                if (!row || row.length === 0) continue;
+                fileTotalRows++;
+
+                // Rule: Strictly take Invoice No from Column G (index 6), match in Myntra Data (Col E), write into Column F (index 5)
+                const saleInvoiceVal = row[colG_SaleInvoice];
+                const cleanG = cleanLossKeyVal(saleInvoiceVal);
+
+                let matchedDate = myntraDataMap.get(cleanG) || "";
+
+                while (row.length <= colF_OrderDate) row.push("");
+                row[colF_OrderDate] = matchedDate || "";
+
+                // Pure text on Order ID (Col B)
+                row[colB_OrderId] = toPureText(row[colB_OrderId]);
+
+                if (matchedDate) {
+                    fileMatched++;
+                } else {
+                    fileUnmatched++;
+                }
+            }
+
+            totalProcessedRows += fileTotalRows;
+            totalMatchedDates += fileMatched;
+            totalUnmatchedDates += fileUnmatched;
+
+            leLog(`[${fileObj.name}] Done: ${fileTotalRows} rows [${fileMatched} dates matched, ${fileUnmatched} unmatched]`, fileUnmatched === 0 ? 'success' : 'info');
+
+            const updatedWs = XLSX.utils.aoa_to_sheet(workingAoa);
+            const endCol = Math.max(6, (workingAoa[1] ? workingAoa[1].length - 1 : 6));
+            updatedWs['!merges'] = [
+                { s: { r: 0, c: 0 }, e: { r: 0, c: endCol } }
+            ];
+
+            formatLossWorksheet(updatedWs);
+
+            let safeSheetName = getSafeSheetName(baseFileName);
+            if (usedSheetNames.has(safeSheetName)) {
+                let cnt = 2;
+                let altName = safeSheetName.slice(0, 28) + `_${cnt}`;
+                while (usedSheetNames.has(altName)) {
+                    cnt++;
+                    altName = safeSheetName.slice(0, 28) + `_${cnt}`;
+                }
+                safeSheetName = altName;
+            }
+            usedSheetNames.add(safeSheetName);
+
+            // Add to Merged Workbook
+            XLSX.utils.book_append_sheet(mergedWb, updatedWs, safeSheetName);
+
+            // Create Single Updated Workbook
+            const singleWb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(singleWb, updatedWs, safeSheetName);
+            const singleBuffer = XLSX.write(singleWb, { bookType: 'xlsx', type: 'array' });
+            const singleBlob = new Blob([singleBuffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+
+            const outputSingleFilename = `${baseFileName}.xlsx`;
+            zip.file(outputSingleFilename, singleBuffer);
+
+            processedFilesList.push({
+                name: outputSingleFilename,
+                sheetName: safeSheetName,
+                totalRows: fileTotalRows,
+                matched: fileMatched,
+                unmatched: fileUnmatched,
+                blob: singleBlob,
+                aoa: workingAoa
+            });
+
+            // Register into Error Dispute Tracker
+            const partyOrWhName = baseFileName.replace(/Myntra|Loss|Report|Dispute/gi, '').trim() || baseFileName;
+            registerTrackedError('loss', fileObj.name, partyOrWhName, 'Loss Report Dispute', fileTotalRows);
+        }
+
+        if (processedFilesList.length === 0) {
+            throw new Error("No Loss Details files could be processed.");
+        }
+
+        // Finalize Merged Excel & ZIP Bundle
+        if (progressBar) progressBar.style.width = '85%';
+        if (progressPercent) progressPercent.innerText = '85%';
+        if (progressStepText) progressStepText.innerText = 'Finalizing Merged Excel and ZIP package...';
+
+        const timestamp = new Date().toISOString().slice(0, 10).replace(/[-:]/g, '_');
+        leMergedFilename = `Merged_Loss_Errors_${timestamp}.xlsx`;
+        leZipFilename = `myntra_loss_error_bundle_${timestamp}.zip`;
+
+        const mergedBuffer = XLSX.write(mergedWb, { bookType: 'xlsx', type: 'array' });
+        leMergedBlob = new Blob([mergedBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        zip.file(leMergedFilename, mergedBuffer);
+
+        leZipBlob = await zip.generateAsync({ type: 'blob' });
+
+        if (progressBar) progressBar.style.width = '100%';
+        if (progressPercent) progressPercent.innerText = '100% Completed';
+        if (progressStepText) progressStepText.innerText = 'All loss files processed successfully!';
+
+        leLog(`Successfully completed! ${processedFilesList.length} files processed. Total: ${totalProcessedRows} rows (${totalMatchedDates} dates matched).`, 'success');
+        leLog(`Merged Excel created: "${leMergedFilename}" (${formatBytes(leMergedBlob.size)})`, 'success');
+        leLog(`ZIP Package created: "${leZipFilename}" (${formatBytes(leZipBlob.size)})`, 'success');
+
+        renderLeDashboard(
+            processedFilesList,
+            leMergedBlob,
+            leZipFilename,
+            leMergedFilename,
+            {
+                totalFiles: processedFilesList.length,
+                totalRows: totalProcessedRows,
+                totalMatched: totalMatchedDates,
+                totalUnmatched: totalUnmatchedDates
+            }
+        );
+
+        showToast(`Loss Error Process Completed! ${totalMatchedDates} of ${totalProcessedRows} records matched.`, 'success');
+
+    } catch (err) {
+        console.error('Loss process error:', err);
+        leLog(`Loss process failed: ${err.message}`, 'error');
+        showToast(`Loss process error: ${err.message}`, 'error');
+        if (container) {
+            container.innerHTML = `
+                <div class="empty-output-state">
+                    <i class="fa-solid fa-circle-exclamation placeholder-icon" style="color: #ef4444;"></i>
+                    <p style="color: #ef4444; font-weight: 600;">Error: ${err.message}</p>
+                </div>
+            `;
+        }
+    } finally {
+        if (btn) btn.removeAttribute('disabled');
+    }
+}
+
 
 // ==========================
 // FOLDER CREATE TAB LOGIC
@@ -9381,10 +11137,16 @@ async function renderErrorTracker() {
         tr.style.borderBottom = '1px solid var(--border-color)';
         
         // Source badge
-        const isMyntra = record.type === 'myntra';
-        const sourceBadge = isMyntra 
-            ? `<span style="background: rgba(0, 150, 199, 0.08); color: #0096c7; border: 1px solid rgba(0, 150, 199, 0.15); padding: 0.2rem 0.45rem; border-radius: 6px; font-size: 0.75rem; font-weight: 600;">MYNTRA ERROR</span>`
-            : `<span style="background: rgba(123, 44, 191, 0.08); color: var(--primary); border: 1px solid rgba(123, 44, 191, 0.15); padding: 0.2rem 0.45rem; border-radius: 6px; font-size: 0.75rem; font-weight: 600;">INVOICE</span>`;
+        let sourceBadge = '';
+        if (record.type === 'myntra') {
+            sourceBadge = `<span style="background: rgba(0, 150, 199, 0.08); color: #0096c7; border: 1px solid rgba(0, 150, 199, 0.15); padding: 0.2rem 0.45rem; border-radius: 6px; font-size: 0.75rem; font-weight: 600;">MYNTRA SALE ERROR</span>`;
+        } else if (record.type === 'purchase') {
+            sourceBadge = `<span style="background: rgba(123, 44, 191, 0.08); color: #7b2cbf; border: 1px solid rgba(123, 44, 191, 0.15); padding: 0.2rem 0.45rem; border-radius: 6px; font-size: 0.75rem; font-weight: 600;">PURCHASE DISPUTE</span>`;
+        } else if (record.type === 'loss') {
+            sourceBadge = `<span style="background: rgba(225, 29, 72, 0.08); color: #e11d48; border: 1px solid rgba(225, 29, 72, 0.15); padding: 0.2rem 0.45rem; border-radius: 6px; font-size: 0.75rem; font-weight: 600;">LOSS ERROR</span>`;
+        } else {
+            sourceBadge = `<span style="background: rgba(245, 158, 11, 0.08); color: #b45309; border: 1px solid rgba(245, 158, 11, 0.15); padding: 0.2rem 0.45rem; border-radius: 6px; font-size: 0.75rem; font-weight: 600;">INVOICE ERROR</span>`;
+        }
 
         // Error Type details
         const detailHtml = `
@@ -9491,7 +11253,9 @@ function setupCleanAndResetButtons() {
     const btnResetFolderCreate = document.getElementById('btn-reset-folder-create');
     const btnResetDatabase = document.getElementById('btn-reset-database');
     const btnResetMyntraError = document.getElementById('btn-reset-myntra-error');
+    const btnResetPurchaseError = document.getElementById('btn-reset-purchase-error');
     const btnResetInvoiceError = document.getElementById('btn-reset-invoice-error');
+    const btnResetLossError = document.getElementById('btn-reset-loss-error');
     const btnResetErrorTracker = document.getElementById('btn-reset-error-tracker');
 
     if (btnResetProcessor) btnResetProcessor.addEventListener('click', resetProcessorTab);
@@ -9501,7 +11265,9 @@ function setupCleanAndResetButtons() {
     if (btnResetFolderCreate) btnResetFolderCreate.addEventListener('click', resetFolderCreateTab);
     if (btnResetDatabase) btnResetDatabase.addEventListener('click', resetDatabaseTab);
     if (btnResetMyntraError) btnResetMyntraError.addEventListener('click', resetMyntraErrorTab);
+    if (btnResetPurchaseError) btnResetPurchaseError.addEventListener('click', resetPurchaseErrorTab);
     if (btnResetInvoiceError) btnResetInvoiceError.addEventListener('click', resetInvoiceErrorTab);
+    if (btnResetLossError) btnResetLossError.addEventListener('click', resetLossErrorTab);
     if (btnResetErrorTracker) btnResetErrorTracker.addEventListener('click', resetErrorTrackerTab);
 }
 
@@ -9877,4 +11643,101 @@ function resetErrorTrackerTab() {
     }
     showToast("Error Dispute Tracker filters reset.", "success");
 }
+
+function resetPurchaseErrorTab() {
+    mePurchaseDetailsFiles = [];
+    mePurchaseDataFile = null;
+    mePurchaseZipBlob = null;
+    mePurchaseZipFilename = "";
+    mePurchaseMergedBlob = null;
+    mePurchaseMergedFilename = "";
+
+    const purchaseInput = document.getElementById('mePurchaseDetailsFileInput');
+    if (purchaseInput) purchaseInput.value = "";
+
+    const dataInput = document.getElementById('mePurchaseDataFileInput');
+    if (dataInput) dataInput.value = "";
+
+    const displayData = document.getElementById('mePurchaseDataFileDisplay');
+    if (displayData) {
+        displayData.innerText = "Drag or click to choose Myntra Data file";
+        displayData.title = "";
+    }
+
+    const dataDropzone = document.getElementById('mePurchaseDataDropzone');
+    if (dataDropzone) dataDropzone.classList.remove('file-selected');
+
+    const progressCard = document.getElementById('mePurchaseProgressCard');
+    if (progressCard) progressCard.classList.add('hidden');
+
+    const outputContainer = document.getElementById('mePurchaseOutputContainer');
+    if (outputContainer) {
+        outputContainer.innerHTML = `
+            <div class="empty-output-state">
+                <i class="fa-solid fa-bag-shopping placeholder-icon" style="color: #7b2cbf; font-size: 2.5rem; margin-bottom: 0.5rem; opacity: 0.6;"></i>
+                <p style="font-size: 0.85rem; color: var(--text-secondary); font-weight: 500;">Upload Purchase Details & Myntra Data files and click process to run Purchase Error logic.</p>
+            </div>
+        `;
+        outputContainer.className = 'processed-container empty';
+    }
+
+    const consoleLog = document.getElementById('mePurchaseConsoleLog');
+    if (consoleLog) {
+        consoleLog.innerHTML = '<div class="log-line info" style="color: #38bdf8;">[System] Tab reset. Please upload Purchase Details and Myntra Data file.</div>';
+    }
+
+    updateMePurchaseDetailsUI();
+    checkMePurchaseInputs();
+
+    showToast("Purchase Price Dispute tab cleaned & reset.", "success");
+}
+
+function resetLossErrorTab() {
+    leDetailsFiles = [];
+    leDataFile = null;
+    leZipBlob = null;
+    leZipFilename = "";
+    leMergedBlob = null;
+    leMergedFilename = "";
+
+    const detailsInput = document.getElementById('leDetailsFileInput');
+    if (detailsInput) detailsInput.value = "";
+
+    const dataInput = document.getElementById('leDataFileInput');
+    if (dataInput) dataInput.value = "";
+
+    const displayData = document.getElementById('leDataFileDisplay');
+    if (displayData) {
+        displayData.innerText = "Drag or click to choose Myntra Data file";
+        displayData.title = "";
+    }
+
+    const dataDropzone = document.getElementById('leDataDropzone');
+    if (dataDropzone) dataDropzone.classList.remove('file-selected');
+
+    const progressCard = document.getElementById('leProgressCard');
+    if (progressCard) progressCard.classList.add('hidden');
+
+    const outputContainer = document.getElementById('leOutputContainer');
+    if (outputContainer) {
+        outputContainer.innerHTML = `
+            <div class="empty-output-state">
+                <i class="fa-solid fa-arrow-trend-down placeholder-icon" style="color: #e11d48; font-size: 2.5rem; margin-bottom: 0.5rem; opacity: 0.6;"></i>
+                <p style="font-size: 0.85rem; color: var(--text-secondary); font-weight: 500;">Upload Loss Details & Reference Myntra Data files and click process to run Loss Error logic.</p>
+            </div>
+        `;
+        outputContainer.className = 'processed-container empty';
+    }
+
+    const consoleLog = document.getElementById('leConsoleLog');
+    if (consoleLog) {
+        consoleLog.innerHTML = '<div class="log-line info" style="color: #38bdf8;">[System] Tab reset. Please upload Loss Details and Myntra Data file.</div>';
+    }
+
+    updateLeDetailsUI();
+    checkLeInputs();
+
+    showToast("Loss Error tab cleaned & reset.", "success");
+}
+
 
