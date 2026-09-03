@@ -742,6 +742,19 @@ function cleanKey(v) {
     return k;
 }
 
+// Strip "MY" prefix ONLY when the code count is exactly 5 (MY + 3 digits, e.g. MY106, MY101 -> 106, 101)
+// If count is not 5 (e.g. MY1, MY12, MY1234), keeps value unchanged as-is
+function normalizeMyPartyCode(val) {
+    if (!val || typeof val !== 'string') return val;
+    const str = val.trim();
+    // Check if starts with MY/my followed by exactly 3 digits (2 letters + 3 digits = 5 count)
+    const match = str.match(/^MY(\d{3})(?=[^0-9]|$)/i);
+    if (match) {
+        return str.slice(2);
+    }
+    return str;
+}
+
 // Extract party code (e.g. 139) from selected OD file path or filename
 function getPartyCode(odFileObj) {
     if (!odFileObj) return "PartyCode";
@@ -751,12 +764,13 @@ function getPartyCode(odFileObj) {
         const parts = odFileObj.path.split(/[\/\\]/);
         // Loop from right to left (deepest folder to root folder)
         for (let i = parts.length - 2; i >= 0; i--) {
+            let seg = normalizeMyPartyCode(parts[i].trim());
             // First check if folder segment starts with digits
-            const match = parts[i].match(/^\d+/);
+            const match = seg.match(/^\d+/);
             if (match) return match[0];
             
             // Check if folder segment contains known party code digits
-            const allDigitMatches = parts[i].match(/\d+/g);
+            const allDigitMatches = seg.match(/\d+/g);
             if (allDigitMatches) {
                 for (const num of allDigitMatches) {
                     const exists = partyData.some(item => String(item.code).trim() === num.trim());
@@ -768,7 +782,8 @@ function getPartyCode(odFileObj) {
     
     // 2. Try file name starting digits
     if (odFileObj.name) {
-        const match = odFileObj.name.match(/^\d+/);
+        let fName = normalizeMyPartyCode(odFileObj.name.trim());
+        const match = fName.match(/^\d+/);
         if (match) return match[0];
         
         // Check if file name contains known party code digits
@@ -1371,21 +1386,10 @@ async function processPartyPipeline(odFileObj, dtFileObj, summaryFileObj, partyC
     const dtArrayBuffer = XLSX.write(dtWB, { bookType: 'xlsx', type: 'array' });
     const dtBlob = new Blob([dtArrayBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     
-    // Compile Combined Master
+    // Compile Combined Master (PR File - Simple clean excel without any colors)
     const combWS = XLSX.utils.aoa_to_sheet(combinedRows);
     const combWB = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(combWB, combWS, "Combined Master");
-    for (let r = 1; r < combinedRows.length; r++) {
-        const colorIndex = (r - 1) % 7;
-        const colorsHex = ["FFF5F5", "FFFAEB", "FAFFF0", "F0FFF5", "F0F8FF", "F8F0FF", "FFF0FA"];
-        const hexColor = colorsHex[colorIndex];
-        for (let c = 0; c < 18; c++) {
-            const cellRef = XLSX.utils.encode_cell({ r, c });
-            if (combWS[cellRef]) {
-                combWS[cellRef].s = { fill: { fgColor: { rgb: hexColor } } };
-            }
-        }
-    }
     const combArrayBuffer = XLSX.write(combWB, { bookType: 'xlsx', type: 'array' });
     const combBlob = new Blob([combArrayBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     
@@ -2621,12 +2625,34 @@ async function loadSeparateSessionFromStorage() {
                             fileBlob = new Blob([catData.blob]);
                         }
                         
-                        const groupsMap = new Map(catData.groupsArray || []);
+                        const groupsMap = new Map();
+                        (catData.groupsArray || []).forEach(([k, v]) => {
+                            let cleanKey = normalizeMyPartyCode(k);
+                            const catCfg = SEP_CATEGORIES[key];
+                            if (catCfg && Array.isArray(v)) {
+                                v.forEach(row => {
+                                    if (row && row[catCfg.field]) {
+                                        row[catCfg.field] = normalizeMyPartyCode(String(row[catCfg.field]));
+                                    }
+                                });
+                            }
+                            groupsMap.set(cleanKey, v);
+                        });
+
+                        const cleanUnique = (catData.uniqueValues || []).map(val => normalizeMyPartyCode(val));
+                        const uniqueDedupped = Array.from(new Set(cleanUnique));
+                        uniqueDedupped.sort((a, b) => {
+                            const numA = parseInt(a, 10);
+                            const numB = parseInt(b, 10);
+                            if (!isNaN(numA) && !isNaN(numB) && numA !== numB) return numA - numB;
+                            return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+                        });
+
                         sepCategoryState[key] = {
                             file: fileBlob,
                             fileName: catData.fileName || '',
                             aoa: null,
-                            uniqueValues: catData.uniqueValues || [],
+                            uniqueValues: uniqueDedupped,
                             groups: groupsMap
                         };
 
@@ -2875,11 +2901,16 @@ async function startSeparateProcess() {
                 if (!row) continue;
 
                 const rawVal = row[filterField];
-                const cleanVal = cleanCell(rawVal).trim();
+                let cleanVal = cleanCell(rawVal).trim();
 
                 if (cleanVal === "" || cleanVal.toLowerCase() === "warehouse code/name" || cleanVal.toLowerCase() === "party code" || cleanVal.toLowerCase() === "state code") {
                     continue;
                 }
+
+                // Strip "MY" prefix ONLY when code count is 5 (e.g. MY106, MY101 -> 106, 101, MY106-Kiddily -> 106-Kiddily)
+                // Values with other counts (e.g. MY1, MY12, MY1234) remain untouched
+                cleanVal = normalizeMyPartyCode(cleanVal);
+                row[filterField] = cleanVal;
 
                 if (!groups.has(cleanVal)) {
                     groups.set(cleanVal, []);
@@ -2888,7 +2919,12 @@ async function startSeparateProcess() {
                 groups.get(cleanVal).push(row);
             }
 
-            uniqueValues.sort();
+            uniqueValues.sort((a, b) => {
+                const numA = parseInt(a, 10);
+                const numB = parseInt(b, 10);
+                if (!isNaN(numA) && !isNaN(numB) && numA !== numB) return numA - numB;
+                return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+            });
             catState.uniqueValues = uniqueValues;
             catState.groups = groups;
             totalSplitsAcrossAll += uniqueValues.length;
@@ -4372,7 +4408,7 @@ function renderStagedRenameFiles() {
 
 // Helper: Extract party code for Option B (Column G / TaxReportData / EE Invoice No files)
 function extractCodeFromColG(colGVal, fileName) {
-    const cleanVal = String(colGVal || "").trim();
+    let cleanVal = normalizeMyPartyCode(String(colGVal || "").trim());
 
     // 1. Check if cleanVal contains a direct match with partyData database codes (e.g. 225, 178, 139, 157, 221, etc.)
     if (cleanVal !== "" && typeof partyData !== "undefined" && partyData.length > 0) {
@@ -8909,6 +8945,7 @@ function getFldPrefixGroups() {
             if (name.includes("-")) {
                 prefix = name.split("-")[0].trim();
             }
+            prefix = normalizeMyPartyCode(prefix);
             if (prefix === "") prefix = "Ungrouped";
             if (!groups.has(prefix)) {
                 groups.set(prefix, []);
