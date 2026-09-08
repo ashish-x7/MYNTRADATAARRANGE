@@ -100,6 +100,13 @@ const addPartyNameInput = document.getElementById('add-party-name');
 
 // Initialize Events
 document.addEventListener('DOMContentLoaded', () => {
+    // Delete legacy v1 IndexedDB databases that might store old default ON states
+    if (typeof window !== 'undefined' && window.indexedDB) {
+        ['MyntraSeparateCacheDB', 'MyntraFolderCreateCacheDB', 'MyntraRenameCacheDB'].forEach(dbName => {
+            try { window.indexedDB.deleteDatabase(dbName); } catch(e){}
+        });
+    }
+
     setupEventHandlers();
     setupDeleteConfirmationModal();
     loadPartyData();
@@ -112,6 +119,23 @@ document.addEventListener('DOMContentLoaded', () => {
     setupInvoiceError();
     setupErrorTracker();
     setupCleanAndResetButtons();
+
+    // Enforce default OFF across all tabs
+    const tSimple = document.getElementById('toggle-simple-rule');
+    if (tSimple) { tSimple.checked = false; }
+    updateSimpleRuleUI();
+
+    const tFld = document.getElementById('toggle-fld-rule');
+    if (tFld) { tFld.checked = false; }
+    updateFldRuleUI();
+
+    const tRen = document.getElementById('toggle-ren-g-move');
+    if (tRen) { tRen.checked = false; }
+    updateRenGMoveUI();
+
+    const tProc = document.getElementById('toggle-proc-rule');
+    if (tProc) { tProc.checked = false; }
+    updateProcRuleUI();
 });
 
 
@@ -303,6 +327,66 @@ function setupEventHandlers() {
         
         await addPartyRecord(code, name);
     });
+
+    // Processor Rule Toggle (ON = New [2 Files], OFF = Old [3 Files])
+    const toggleProcRule = document.getElementById('toggle-proc-rule');
+    if (toggleProcRule) {
+        toggleProcRule.checked = false;
+        toggleProcRule.addEventListener('change', () => {
+            updateProcRuleUI();
+        });
+    }
+    updateProcRuleUI();
+}
+
+// File Renamer & Processor Rule Toggle UI (ON = New [2 Files], OFF = Old [3 Files])
+function updateProcRuleUI() {
+    const toggle = document.getElementById('toggle-proc-rule');
+    const isNew = toggle ? toggle.checked : false;
+    const ruleContainer = document.getElementById('proc-rule-container');
+    const ruleText = document.getElementById('label-proc-rule');
+    const ruleTag = document.getElementById('proc-rule-tag');
+
+    if (isNew) {
+        if (ruleContainer) ruleContainer.classList.remove('is-old');
+        if (ruleText) ruleText.textContent = "New (2 Files)";
+        if (ruleTag) ruleTag.textContent = "New: 2 Files";
+    } else {
+        if (ruleContainer) ruleContainer.classList.add('is-old');
+        if (ruleText) ruleText.textContent = "Old (3 Files)";
+        if (ruleTag) ruleTag.textContent = "Old: 3 Files";
+    }
+
+    updateMappingUIForProcRule();
+}
+
+// Dynamically adjust Confirm File Mapping card for 2-File vs 3-File mode
+function updateMappingUIForProcRule() {
+    const toggle = document.getElementById('toggle-proc-rule');
+    const isNew = toggle ? toggle.checked : false;
+    
+    const grpSummary = document.getElementById('grp-select-summary');
+    const labelOd = document.getElementById('label-select-od');
+    const labelDt = document.getElementById('label-select-dt');
+    const labelSummary = document.getElementById('label-select-summary');
+    const batchDesc = document.getElementById('batch-matching-desc');
+    
+    if (isNew) {
+        if (labelOd) labelOd.textContent = "DropShip File (Orders Report)";
+        if (labelDt) labelDt.textContent = "IndoPrimo File (Sale Item Details)";
+        if (grpSummary) grpSummary.classList.add('hidden');
+        if (batchDesc) batchDesc.textContent = "DropShip and IndoPrimo files will be matched automatically for each party group.";
+    } else {
+        if (labelOd) labelOd.textContent = "OD File (DropShip/Orders)";
+        if (labelDt) labelDt.textContent = "DT File (Tax/Sales)";
+        if (grpSummary) grpSummary.classList.remove('hidden');
+        if (labelSummary) labelSummary.textContent = "Sale Summary File (Other)";
+        if (batchDesc) batchDesc.textContent = "OD, DT, and Sale Summary files will be matched automatically for each party group.";
+    }
+
+    if (typeof filesList !== 'undefined' && filesList.length > 0 && typeof populateSelectors === 'function') {
+        populateSelectors();
+    }
 }
 
 // Show Toast Notification
@@ -597,6 +681,7 @@ function getUniquePartyCodes() {
 // Populate file mapping dropdown lists
 function populateSelectors() {
     const uniqueCodes = getUniquePartyCodes();
+    const isNew = document.getElementById('toggle-proc-rule')?.checked;
     
     if (uniqueCodes.length > 1) {
         // Batch Mode: Hide single dropdowns, show batch info message
@@ -612,30 +697,45 @@ function populateSelectors() {
     mappingBodySingle.classList.remove('hidden');
     mappingBodyBatch.classList.add('hidden');
     
-    selectOdFile.innerHTML = '<option value="">-- Choose OD File --</option>';
-    selectDtFile.innerHTML = '<option value="">-- Choose DT File --</option>';
-    selectSummaryFile.innerHTML = '<option value="">-- Choose Sale Summary File --</option>';
+    if (isNew) {
+        selectOdFile.innerHTML = '<option value="">-- Choose DropShip File --</option>';
+        selectDtFile.innerHTML = '<option value="">-- Choose IndoPrimo File --</option>';
+    } else {
+        selectOdFile.innerHTML = '<option value="">-- Choose OD File --</option>';
+        selectDtFile.innerHTML = '<option value="">-- Choose DT File --</option>';
+        selectSummaryFile.innerHTML = '<option value="">-- Choose Sale Summary File --</option>';
+    }
     
     filesList.forEach(file => {
         const displayPath = file.path.length > 50 ? '...' + file.path.slice(-47) : file.path;
         const optionHTML = `<option value="${file.id}">${displayPath}</option>`;
         selectOdFile.insertAdjacentHTML('beforeend', optionHTML);
         selectDtFile.insertAdjacentHTML('beforeend', optionHTML);
-        selectSummaryFile.insertAdjacentHTML('beforeend', optionHTML);
+        if (!isNew) {
+            selectSummaryFile.insertAdjacentHTML('beforeend', optionHTML);
+        }
     });
     
     // Auto-assignment
-    const odFile = filesList.find(f => f.category === 'OD');
-    const dtFile = filesList.find(f => f.category === 'DT');
-    const summaryFile = filesList.find(f => f.category === 'Summary') || filesList.find(f => f.category === 'unmatched');
-    
-    if (odFile) selectOdFile.value = odFile.id;
-    if (dtFile) selectDtFile.value = dtFile.id;
-    if (summaryFile) selectSummaryFile.value = summaryFile.id;
+    if (isNew) {
+        const dropShipFile = filesList.find(f => f.category === 'OD' || f.name.toLowerCase().includes('dropship') || f.name.toLowerCase().includes('seller_orders_report'));
+        const indoPrimoFile = filesList.find(f => f.name.toLowerCase().includes('indoprimo') || f.name.toLowerCase().includes('itemdetails') || f.name.toLowerCase().includes('sale') || f.name.toLowerCase().includes('saledata') || (f !== dropShipFile && f.category !== 'OD'));
+        
+        if (dropShipFile) selectOdFile.value = dropShipFile.id;
+        if (indoPrimoFile) selectDtFile.value = indoPrimoFile.id;
+    } else {
+        const odFile = filesList.find(f => f.category === 'OD');
+        const dtFile = filesList.find(f => f.category === 'DT');
+        const summaryFile = filesList.find(f => f.category === 'Summary') || filesList.find(f => f.category === 'unmatched');
+        
+        if (odFile) selectOdFile.value = odFile.id;
+        if (dtFile) selectDtFile.value = dtFile.id;
+        if (summaryFile) selectSummaryFile.value = summaryFile.id;
+    }
 }
 
 // Parse Excel or CSV to AOA (Array of Arrays)
-function readExcelAsAOA(fileBlob) {
+function readExcelAsAOA(fileBlob, preferredSheetName = null) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = (e) => {
@@ -647,7 +747,13 @@ function readExcelAsAOA(fileBlob) {
                     raw: false,
                     defval: ""
                 });
-                const sheetName = workbook.SheetNames[0];
+                let sheetName = workbook.SheetNames[0];
+                if (preferredSheetName) {
+                    const matchedSheet = workbook.SheetNames.find(s => s.toLowerCase() === preferredSheetName.toLowerCase());
+                    if (matchedSheet) {
+                        sheetName = matchedSheet;
+                    }
+                }
                 const worksheet = workbook.Sheets[sheetName];
                 const aoa = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" });
                 resolve(aoa);
@@ -1552,21 +1658,824 @@ async function processPartyPipeline(odFileObj, dtFileObj, summaryFileObj, partyC
     };
 }
 
-// Main Advanced Content Join & Process Logic (Handles Single vs Batch mode)
-async function processUploadedFiles() {
-    const uniqueCodes = getUniquePartyCodes();
+// ----------------------------------------------------
+// NEW 2-FILE PIPELINE HELPERS & PROCESSING LOGIC
+// ----------------------------------------------------
+
+const INDIAN_STATE_CODES = {
+    "andaman and nicobar islands": "AN",
+    "andaman & nicobar islands": "AN",
+    "andhra pradesh": "AP",
+    "arunachal pradesh": "AR",
+    "assam": "AS",
+    "bihar": "BR",
+    "chandigarh": "CH",
+    "chhattisgarh": "CG",
+    "chattisgarh": "CG",
+    "dadra and nagar haveli": "DN",
+    "dadra & nagar haveli": "DN",
+    "daman and diu": "DD",
+    "daman & diu": "DD",
+    "dadra and nagar haveli and daman and diu": "DN",
+    "delhi": "DL",
+    "new delhi": "DL",
+    "national capital territory of delhi": "DL",
+    "nct of delhi": "DL",
+    "goa": "GA",
+    "gujarat": "GJ",
+    "haryana": "HR",
+    "himachal pradesh": "HP",
+    "jammu and kashmir": "JK",
+    "jammu & kashmir": "JK",
+    "jharkhand": "JH",
+    "karnataka": "KA",
+    "kerala": "KL",
+    "ladakh": "LA",
+    "lakshadweep": "LD",
+    "madhya pradesh": "MP",
+    "maharashtra": "MH",
+    "manipur": "MN",
+    "meghalaya": "ML",
+    "mizoram": "MZ",
+    "nagaland": "NL",
+    "odisha": "OD",
+    "orissa": "OD",
+    "puducherry": "PY",
+    "pondicherry": "PY",
+    "punjab": "PB",
+    "rajasthan": "RJ",
+    "sikkim": "SK",
+    "tamil nadu": "TN",
+    "tamilnadu": "TN",
+    "telangana": "TS",
+    "tripura": "TR",
+    "uttar pradesh": "UP",
+    "uttarakhand": "UK",
+    "uttaranchal": "UK",
+    "west bengal": "WB"
+};
+
+function getIndianStateCode(stateName) {
+    if (!stateName) return "";
+    const clean = String(stateName).trim().toLowerCase().replace(/[\s\.\-_]+/g, ' ');
+    if (INDIAN_STATE_CODES[clean]) {
+        return INDIAN_STATE_CODES[clean];
+    }
+    // Check if clean is already 2 letters
+    if (/^[a-z]{2}$/i.test(clean)) {
+        return clean.toUpperCase();
+    }
+    // Substring lookup
+    for (const [sName, code] of Object.entries(INDIAN_STATE_CODES)) {
+        if (clean.includes(sName) || sName.includes(clean)) {
+            return code;
+        }
+    }
+    return String(stateName).trim().toUpperCase().slice(0, 2);
+}
+
+// Core Pipeline for New (2 Files: DropShip + IndoPrimo)
+async function processPartyPipelineNew2Files(dropShipFileObj, indoPrimoFileObj, partyCode, isBatchMode = false) {
+    addLog(`--- Processing Party Code: ${partyCode} (New 2-File Pipeline) ---`, "warning");
     
-    if (uniqueCodes.length === 0) {
-        showToast("No party files detected in the uploaded contents.", "error");
-        return;
+    // Step 1: Read sheet data
+    addLog(`[${partyCode}] Loading DropShip and IndoPrimo sheets in background...`, "info");
+    const dropShipRows = await readExcelAsAOA(dropShipFileObj.originalFile);
+    addLog(`[${partyCode}] Loaded DropShip Sheet: ${dropShipRows.length} rows.`, "success");
+    
+    // For IndoPrimo, search for 'SaleData' sheet first, fallback to first sheet
+    const indoPrimoRows = await readExcelAsAOA(indoPrimoFileObj.originalFile, 'SaleData');
+    addLog(`[${partyCode}] Loaded IndoPrimo Sheet: ${indoPrimoRows.length} rows.`, "success");
+    
+    if (!dropShipRows || dropShipRows.length < 2) {
+        throw new Error("DropShip file has no data rows.");
     }
     
-    showLoading("Running Excel Pipeline...", 2);
+    // Step 2: Build IndoPrimo Key Set using formula =B3&G3 (Col B + Col G)
+    addLog(`[${partyCode}] Creating dictionary from IndoPrimo File (Columns B & G, starting Row 3)...`, "info");
+    const indoKeySet = new Set();
+    const indoKeySetStrict = new Set();
+    
+    // IndoPrimo data starts at row 3 (0-based index 2)
+    for (let r = 2; r < indoPrimoRows.length; r++) {
+        const row = indoPrimoRows[r];
+        if (!row) continue;
+        const bVal = cleanCell(row[1]); // Column B (index 1)
+        const gVal = cleanCell(row[6]).replace(/\.0+$/, '').replace(/^[`']/, '').trim(); // Column G (index 6)
+        if (bVal && gVal) {
+            const rawCombined = bVal + gVal;
+            indoKeySet.add(cleanKey(rawCombined));
+            indoKeySetStrict.add(rawCombined.toLowerCase().replace(/[\s\-_]/g, ''));
+        }
+    }
+    
+    // Check row 2 (index 1) if row 1 was header and no metadata row was present
+    if (indoPrimoRows.length > 1) {
+        const r1 = indoPrimoRows[1];
+        const b1 = cleanCell(r1[1]);
+        const g1 = cleanCell(r1[6]);
+        const isHeader = /order|item|sku|invoice|code|id|date/i.test(b1 + g1);
+        if (!isHeader && b1 && g1) {
+            const rawCombined = b1 + g1;
+            indoKeySet.add(cleanKey(rawCombined));
+            indoKeySetStrict.add(rawCombined.toLowerCase().replace(/[\s\-_]/g, ''));
+        }
+    }
+    addLog(`[${partyCode}] IndoPrimo Dictionary loaded with ${indoKeySet.size} unique keys.`, "success");
+    
+    // Step 3: Filter DropShip File: Delete matched rows where =G2&E2 is in IndoPrimo Set
+    addLog(`[${partyCode}] Filtering DropShip File: Deleting matching invoiced rows against IndoPrimo keys...`, "info");
+    const headerRow = dropShipRows[0] || [];
+    const cleanDropShipRows = [headerRow]; // retain header
+    let deletedCount = 0;
+    
+    // Dynamic header lookup in DropShip file
+    const findColIndex = (name, fallback) => {
+        const idx = headerRow.findIndex(h => String(h || "").trim().toLowerCase() === name.toLowerCase());
+        return idx !== -1 ? idx : fallback;
+    };
+    
+    const idxTaxRate = findColIndex("Tax Rate", 41);
+    const idxSellingPrice = findColIndex("Selling Price", 47);
+    const idxItemPrice = findColIndex("Item Price(Excluding Tax)", 49);
+    const idxIgstRate = findColIndex("IGST Rate", 59);
+    const idxIgstAmount = findColIndex("IGST Amount", 60);
+    const idxCgstAmount = findColIndex("CGST Amount", 61);
+    const idxSgstAmount = findColIndex("SGST Amount", 62);
+    const idxBillingState = findColIndex("Billing State", 39); // Col AN is 39
+    
+    const idxQuantity = findColIndex("Quantity", findColIndex("Item Quantity", findColIndex("Qty", -1)));
+    const idxHsn = headerRow.findIndex(h => String(h || "").trim().toLowerCase().includes("hsn")) !== -1
+        ? headerRow.findIndex(h => String(h || "").trim().toLowerCase().includes("hsn"))
+        : 25;
+    
+    for (let r = 1; r < dropShipRows.length; r++) {
+        const row = dropShipRows[r];
+        if (!row) continue;
+        
+        // Key = G2 & E2 (Col G is index 6, Col E is index 4)
+        const gVal = cleanCell(row[6]).replace(/\.0+$/, '').replace(/^[`']/, '').trim();
+        const eVal = cleanCell(row[4]).replace(/\.0+$/, '').replace(/^[`']/, '').trim();
+        const dropShipKey = cleanKey(gVal + eVal);
+        const dropShipKeyStrict = (gVal + eVal).toLowerCase().replace(/[\s\-_]/g, '');
+        
+        // Also check if Col DW (index 126) has precalculated key
+        const dwKey = cleanKey(cleanCell(row[126])).replace(/\.0+$/, '').replace(/^[`']/, '').trim();
+        const dwKeyStrict = cleanCell(row[126]).replace(/\.0+$/, '').replace(/^[`']/, '').trim().toLowerCase().replace(/[\s\-_]/g, '');
+        
+        const isMatched = (dropShipKey !== "" && indoKeySet.has(dropShipKey)) ||
+                          (dropShipKeyStrict !== "" && indoKeySetStrict.has(dropShipKeyStrict)) ||
+                          (dwKey !== "" && indoKeySet.has(dwKey)) ||
+                          (dwKeyStrict !== "" && indoKeySetStrict.has(dwKeyStrict));
+                          
+        if (isMatched) {
+            deletedCount++;
+        } else {
+            // Format dates in Column L (index 11) and Column M (index 12)
+            const clonedRow = [...row];
+            if (clonedRow[11] !== undefined && clonedRow[11] !== "") {
+                clonedRow[11] = formatDate(clonedRow[11]);
+            }
+            if (clonedRow[12] !== undefined && clonedRow[12] !== "") {
+                clonedRow[12] = formatDate(clonedRow[12]);
+            }
+            cleanDropShipRows.push(clonedRow);
+        }
+    }
+    addLog(`[${partyCode}] DropShip Filtering Done: Deleted ${deletedCount} invoiced rows. Remaining: ${cleanDropShipRows.length - 1} clean rows.`, "success");
+    
+    // Step 4: Calculate Date Range & B2/P2
+    addLog(`[${partyCode}] Calculating date range and metadata...`, "info");
+    let minDate = null;
+    let maxDate = null;
+    for (let r = 1; r < cleanDropShipRows.length; r++) {
+        const row = cleanDropShipRows[r];
+        // Col L is Shipment date (11), Col M is Invoice date (12)
+        const dateVal = row[12] || row[11];
+        if (dateVal) {
+            const parsed = parseFormattedDate(dateVal);
+            if (parsed) {
+                if (!minDate || parsed < minDate) minDate = parsed;
+                if (!maxDate || parsed > maxDate) maxDate = parsed;
+            }
+        }
+    }
+    
+    let dateRangeStr = "—";
+    if (minDate && maxDate) {
+        const padZero = (n) => String(n).padStart(2, '0');
+        const formatShortDate = (d) => `${padZero(d.getDate())}-${padZero(d.getMonth()+1)}-${d.getFullYear()}`;
+        dateRangeStr = `${formatShortDate(minDate)} TO ${formatShortDate(maxDate)}`;
+    }
+    addLog(`[${partyCode}] Calculated Date Range: ${dateRangeStr}`, "success");
+    
+    const row1 = cleanDropShipRows[1] || [];
+    const b2Val = cleanCell(row1[125]) || cleanCell(row1[1]); // Col DV or Col B
+    const p2Val = cleanCell(row1[0]) || cleanCell(row1[15]);   // Col A or Col P
+    const b2p2String = (b2Val || p2Val) ? `${b2Val}/${p2Val}` : "—";
+    
+    // Step 5: GST Not Applicable checks & calculations on clean DropShip rows
+    addLog(`[${partyCode}] Running GST Not Applicable calculations...`, "info");
+    const gstRows = [["EE Invoice No", "Order Status", "Invoice Date", "Item Quantity", "Selling Price", "Item Price(Excluding Tax)"]];
+    const dtCellStyles = {};
+    const gstCellStyles = {};
+    let shadeIndex = 1;
+    let gstCreated = false;
+    
+    for (let r = 1; r < cleanDropShipRows.length; r++) {
+        const row = cleanDropShipRows[r];
+        const invoiceNo = cleanCell(row[6]) || cleanCell(row[3]); // Col G (EE Invoice No)
+        const taxRate = cleanCell(row[idxTaxRate]);
+        
+        // If invoice is present and tax rate is blank
+        if (invoiceNo !== "" && taxRate === "") {
+            gstCreated = true;
+            
+            const newGstRow = [
+                cleanCell(row[6]) || cleanCell(row[3]) || "", // EE Invoice No
+                cleanCell(row[8]) || "Sold",                  // Status
+                cleanCell(row[12]) || cleanCell(row[11]) || "", // Date
+                cleanCell(row[idxQuantity !== -1 ? idxQuantity : 17]) || "1", // Quantity
+                cleanCell(row[idxSellingPrice]) || "",
+                cleanCell(row[idxItemPrice]) || ""
+            ];
+            gstRows.push(newGstRow);
+            
+            const Rc = 170 + ((shadeIndex * 37) % 80);
+            const Gc = 170 + ((shadeIndex * 67) % 80);
+            const Bc = 170 + ((shadeIndex * 97) % 80);
+            const hexColor = ((1 << 24) + (Rc << 16) + (Gc << 8) + Bc).toString(16).slice(1).toUpperCase();
+            
+            const destRowIndex = gstRows.length - 1;
+            for (let c = 0; c < 6; c++) {
+                gstCellStyles[`${destRowIndex},${c}`] = { fill: { fgColor: { rgb: hexColor } } };
+            }
+            
+            const targetLength = Math.max(idxTaxRate, idxSellingPrice, idxItemPrice, idxIgstRate, idxIgstAmount, idxCgstAmount, idxSgstAmount, idxBillingState) + 1;
+            while (row.length < targetLength) {
+                row.push("");
+            }
+            
+            row[idxTaxRate] = 5;
+            const valAV = parseFloat(String(row[idxSellingPrice] || "").replace(/,/g, "")) || 0;
+            const round0 = (v) => Math.round(v);
+            const round4 = (v) => Math.round(v * 10000) / 10000;
+            
+            const valAX = round0(valAV / 1.05);
+            row[idxItemPrice] = valAX;
+            
+            const roundPart = round4(valAV / 1.05);
+            const valBH = round4(valAV - roundPart);
+            row[idxIgstRate] = valBH;
+            
+            const stateVal = String(row[idxBillingState] || "").toLowerCase().trim();
+            if (stateVal === "gujarat") {
+                row[idxIgstAmount] = "0";
+                const valBJ = round4((valAV - roundPart) / 2);
+                row[idxCgstAmount] = valBJ;
+                row[idxSgstAmount] = valBJ;
+            } else {
+                const valBI = round4(valAV - roundPart);
+                row[idxIgstAmount] = valBI;
+                row[idxCgstAmount] = "0";
+                row[idxSgstAmount] = "0";
+            }
+            
+            shadeIndex++;
+        }
+    }
+    
+    // Step 6: Extrapolate Invoice Range (Min and Max) strictly from Column G (EE Invoice No)
+    let minNum = Infinity;
+    let maxNum = -Infinity;
+    let invoicePrefix = "";
+    
+    for (let r = 1; r < cleanDropShipRows.length; r++) {
+        const row = cleanDropShipRows[r];
+        const valG = cleanCell(row[6]); // Col G: EE Invoice No (e.g. MY27S139-8629)
+        
+        if (valG) {
+            const parts = valG.split('-');
+            if (parts.length >= 2) {
+                const lastPart = parts[parts.length - 1];
+                const curNum = parseInt(lastPart, 10);
+                if (!isNaN(curNum) && curNum > 0) {
+                    if (curNum < minNum) minNum = curNum;
+                    if (curNum > maxNum) maxNum = curNum;
+                    if (!invoicePrefix) {
+                        invoicePrefix = parts.slice(0, -1).join('-');
+                    }
+                }
+            } else {
+                const curNum = parseInt(valG, 10);
+                if (!isNaN(curNum) && curNum > 0) {
+                    if (curNum < minNum) minNum = curNum;
+                    if (curNum > maxNum) maxNum = curNum;
+                }
+            }
+        }
+    }
+    
+    let generatedRange = "";
+    if (minNum !== Infinity && maxNum !== -Infinity) {
+        generatedRange = invoicePrefix ? `${invoicePrefix}-${minNum}-${maxNum}` : `${minNum}-${maxNum}`;
+    } else {
+        generatedRange = "RangeNotFound";
+    }
+    addLog(`[${partyCode}] Invoice Range Extrapolated: ${generatedRange}`, "success");
+    
+    // Step 7: Check for Duplicate Invoices strictly in Column G (EE Invoice No)
+    addLog(`[${partyCode}] Checking duplicate invoices in DropShip Column G...`, "info");
+    const invoiceCounts = new Map();
+    for (let r = 1; r < cleanDropShipRows.length; r++) {
+        const val = cleanCell(cleanDropShipRows[r][6]); // Column G: EE Invoice No
+        if (val !== "") {
+            invoiceCounts.set(val, (invoiceCounts.get(val) || 0) + 1);
+        }
+    }
+    
+    let duplicateFound = false;
+    const duplicateRows = [["DUPLICATE INVOICE", "COUNT"]];
+    const duplicateList = [];
+    for (const [inv, count] of invoiceCounts.entries()) {
+        if (count > 1) {
+            duplicateFound = true;
+            duplicateRows.push([inv, count]);
+            duplicateList.push(inv);
+        }
+    }
+    
+    // Step 8: Generate Master Combined Report (OD File) with 18 Columns
+    addLog(`[${partyCode}] Generating Master Combined (OD) File with 18 columns...`, "info");
+    const combinedRows = [[
+        "Order ID", "Invoice ID", "New Invoice ID", "Invoice Reference Number (IRN)",
+        "Shipment date", "Invoice date", "GST ID", "SKU ID", "SKU", "Item Title",
+        "Quantity", "Item Cost", "GST Rate", "CESS Rate", "HSN", "Warehouse Code/Name",
+        "Status", "state code"
+    ]];
+    
+    for (let r = 1; r < cleanDropShipRows.length; r++) {
+        const row = cleanDropShipRows[r];
+        const newRow = new Array(18).fill("");
+        
+        newRow[0] = cleanCell(row[4]).replace(/^[`']/, '').trim(); // Order ID (Col E, index 4)
+        newRow[1] = cleanCell(row[3]); // Invoice ID (Col D, index 3 - Reference Code)
+        newRow[2] = cleanCell(row[6]); // New Invoice ID (Col G, index 6 - EE Invoice No)
+        newRow[3] = "";                // IRN blank
+        newRow[4] = formatDate(row[11]); // Shipment date (Col L, index 11)
+        newRow[5] = formatDate(row[12]); // Invoice date (Col M, index 12)
+        newRow[6] = "24AAECE9149B1ZU";    // GST ID Constant
+        newRow[7] = "";                // SKU ID blank (heading only)
+        newRow[8] = "";                // SKU blank (heading only)
+        newRow[9] = cleanCell(row[23]); // Item Title (Col X, index 23)
+        
+        // Quantity: check dropShip row quantity column or default 1
+        let qty = "";
+        if (idxQuantity !== -1 && row[idxQuantity] !== undefined && String(row[idxQuantity]).trim() !== "") {
+            qty = cleanCell(row[idxQuantity]);
+        } else {
+            qty = 1;
+        }
+        newRow[10] = qty;
+        
+        // Item Cost: check dropShip row or calculated rate
+        let costVal = "";
+        if (idxItemPrice !== -1 && row[idxItemPrice] !== undefined && String(row[idxItemPrice]).trim() !== "") {
+            costVal = row[idxItemPrice];
+        } else if (row[49] !== undefined && String(row[49]).trim() !== "") {
+            costVal = row[49];
+        } else if (row[47] !== undefined && String(row[47]).trim() !== "") {
+            costVal = row[47];
+        }
+        newRow[11] = costVal;
+        
+        newRow[12] = "5%";             // GST Rate
+        newRow[13] = "";               // CESS Rate
+        
+        // HSN (Component SKU HSN / Col Z)
+        let hsnVal = "";
+        if (idxHsn !== -1 && row[idxHsn] !== undefined && String(row[idxHsn]).trim() !== "") {
+            hsnVal = cleanCell(row[idxHsn]);
+        } else if (row[25] !== undefined && String(row[25]).trim() !== "") {
+            hsnVal = cleanCell(row[25]);
+        }
+        newRow[14] = hsnVal;
+        
+        // Warehouse Code/Name: Col DV (125) and Col A (0)
+        const colDV = cleanCell(row[125]);
+        const colA = cleanCell(row[0]);
+        newRow[15] = (colDV && colA) ? `${colDV}/${colA}` : (colDV || colA);
+        
+        newRow[16] = "Not Submitted";  // Status
+        
+        // state code: Col AN (index 39) converted to 2-letter short name
+        newRow[17] = getIndianStateCode(cleanCell(row[39]));
+        
+        combinedRows.push(newRow);
+    }
+    
+    // Step 9: Formulate file names
+    // DT File: ${partyCode}-(${invoicePrefix ? invoicePrefix + '-' : ''}${minNum}-${maxNum})-DT.xlsx
+    // OD File (Combined Master): ${partyCode}-(${invoicePrefix ? invoicePrefix + '-' : ''}${minNum}-${maxNum})-OD.xlsx
+    const dtNameStr = invoicePrefix ? 
+        `${partyCode}-(${invoicePrefix}-${minNum}-${maxNum})-DT` : 
+        `${partyCode}-(${minNum}-${maxNum})-DT`;
+    const odNameStr = invoicePrefix ? 
+        `${partyCode}-(${invoicePrefix}-${minNum}-${maxNum})-OD` : 
+        `${partyCode}-(${minNum}-${maxNum})-OD`;
+        
+    const finalDtFileName = `${dtNameStr}.xlsx`;
+    const finalOdFileName = `${odNameStr}.xlsx`;
+    
+    // Auto-update inputs in Single Mode
+    if (getUniquePartyCodes().length === 1) {
+        inputOdName.value = odNameStr;
+        inputDtName.value = dtNameStr;
+        inputCombinedName.value = odNameStr;
+        if (rangeValue) rangeValue.textContent = generatedRange;
+    }
+    
+    // Step 10: Compile Workbooks & Blobs
+    addLog(`[${partyCode}] Compiling Excel workbooks...`, "info");
+    
+    // 1. Clean DT File (compiled from cleanDropShipRows)
+    const dtWS = XLSX.utils.aoa_to_sheet(cleanDropShipRows);
+    const dtWB = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(dtWB, dtWS, "DT");
+    for (const key in dtCellStyles) {
+        const [r, c] = key.split(',').map(Number);
+        const cellRef = XLSX.utils.encode_cell({ r, c });
+        if (dtWS[cellRef]) {
+            dtWS[cellRef].s = dtCellStyles[key];
+        }
+    }
+    const dtArrayBuffer = XLSX.write(dtWB, { bookType: 'xlsx', type: 'array' });
+    const dtBlob = new Blob([dtArrayBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    
+    // 2. Master Combined (OD) File
+    const odWS = XLSX.utils.aoa_to_sheet(combinedRows);
+    const odWB = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(odWB, odWS, "Combined Master");
+    const odArrayBuffer = XLSX.write(odWB, { bookType: 'xlsx', type: 'array' });
+    const odBlob = new Blob([odArrayBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    
+    // Store back into state
+    // Replace DropShip file with the DT output
+    dropShipFileObj.originalFile = dtBlob;
+    dropShipFileObj.renamedName = finalDtFileName;
+    dropShipFileObj.category = "DT";
+    dropShipFileObj.partyCode = partyCode;
+    dropShipFileObj.partyRange = generatedRange;
+    dropShipFileObj.parsedAOA = cleanDropShipRows;
+    
+    // Mark IndoPrimo file as non-downloadable category
+    if (indoPrimoFileObj) {
+        indoPrimoFileObj.category = "IndoPrimo";
+    }
+    
+    // Push the OD File (Combined) into filesList
+    filesList.push({
+        id: nextId++,
+        name: finalOdFileName,
+        path: finalOdFileName,
+        ext: "xlsx",
+        originalFile: odBlob,
+        category: "OD",
+        renamedName: finalOdFileName,
+        partyCode: partyCode,
+        partyRange: generatedRange,
+        parsedAOA: combinedRows
+    });
+    
+    // Save GST Not Applicable if rows exist
+    if (gstCreated && gstRows.length > 1) {
+        const gstWS = XLSX.utils.aoa_to_sheet(gstRows);
+        const gstWB = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(gstWB, gstWS, "GST Not Applicable");
+        for (const key in gstCellStyles) {
+            const [r, c] = key.split(',').map(Number);
+            const cellRef = XLSX.utils.encode_cell({ r, c });
+            if (gstWS[cellRef]) {
+                gstWS[cellRef].s = gstCellStyles[key];
+            }
+        }
+        const gstBuffer = XLSX.write(gstWB, { bookType: 'xlsx', type: 'array' });
+        const gstBlob = new Blob([gstBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        const gstFileName = `${partyCode}-GST NOT APPLICABLE.xlsx`;
+        filesList.push({
+            id: nextId++,
+            name: gstFileName,
+            path: gstFileName,
+            ext: "xlsx",
+            originalFile: gstBlob,
+            category: "unmatched",
+            renamedName: "GST NOT APPLICABLE.xlsx",
+            partyCode: partyCode,
+            partyRange: generatedRange,
+            parsedAOA: gstRows
+        });
+        addLog(`[${partyCode}] Generated ${gstFileName} with ${gstRows.length - 1} records.`, "warning");
+    }
+    
+    // Save Duplicate Invoice File if duplicates exist
+    if (duplicateFound) {
+        const dupWS = XLSX.utils.aoa_to_sheet(duplicateRows);
+        const dupWB = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(dupWB, dupWS, "DUPLICATES");
+        const dupBuffer = XLSX.write(dupWB, { bookType: 'xlsx', type: 'array' });
+        const dupBlob = new Blob([dupBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        const dupFileName = `${partyCode}-2 MORE INVOICE.xlsx`;
+        filesList.push({
+            id: nextId++,
+            name: dupFileName,
+            path: dupFileName,
+            ext: "xlsx",
+            originalFile: dupBlob,
+            category: "unmatched",
+            renamedName: "2 MORE INVOICE.xlsx",
+            partyCode: partyCode,
+            partyRange: generatedRange,
+            parsedAOA: duplicateRows
+        });
+        addLog(`[${partyCode}] Generated ${dupFileName} with ${duplicateRows.length - 1} duplicate invoices.`, "warning");
+    }
+    
+    // Save SUMMARY.xlsx if in single mode
+    if (!isBatchMode) {
+        const summaryRows1 = [
+            [getPartyCodeName(partyCode)],
+            [generatedRange],
+            []
+        ];
+        const summaryWS1 = XLSX.utils.aoa_to_sheet(summaryRows1);
+        const summaryRows2 = [
+            ["File Name", "Invoice Range", "Date Range", "B2 / P2 Value"],
+            [finalOdFileName, generatedRange, dateRangeStr, b2p2String]
+        ];
+        const summaryWS2 = XLSX.utils.aoa_to_sheet(summaryRows2);
+        const sumWB = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(sumWB, summaryWS1, "Range");
+        XLSX.utils.book_append_sheet(sumWB, summaryWS2, "Summary Log");
+        const sumBuffer = XLSX.write(sumWB, { bookType: 'xlsx', type: 'array' });
+        const sumBlob = new Blob([sumBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        const sumFileName = `${partyCode}-SUMMARY.xlsx`;
+        filesList.push({
+            id: nextId++,
+            name: sumFileName,
+            path: sumFileName,
+            ext: "xlsx",
+            originalFile: sumBlob,
+            category: "unmatched",
+            renamedName: sumFileName,
+            partyCode: partyCode,
+            partyRange: generatedRange,
+            parsedAOA: summaryRows2
+        });
+        addLog(`[${partyCode}] Generated ${sumFileName}.`, "success");
+    }
+    
+    return {
+        partyCode: partyCode,
+        partyCodeName: getPartyCodeName(partyCode),
+        odName: finalOdFileName,
+        dtName: finalDtFileName,
+        generatedRange: generatedRange,
+        dateRangeStr: dateRangeStr,
+        b2p2String: b2p2String,
+        soldCnt: cleanDropShipRows.length - 1,
+        cancelCnt: deletedCount,
+        cancelledInvoices: duplicateList
+    };
+}
+
+// Main Advanced Content Join & Process Logic (Handles Single vs Batch mode)
+async function processUploadedFiles() {
+    let uniqueCodes = getUniquePartyCodes();
+    
+    if (uniqueCodes.length === 0) {
+        if (filesList.length > 0) {
+            uniqueCodes = [getPartyCode(filesList[0]) || "139"];
+        } else {
+            showToast("No party files detected in the uploaded contents.", "error");
+            return;
+        }
+    }
+    
+    const isNewPipeline = document.getElementById('toggle-proc-rule')?.checked;
+    showLoading(isNewPipeline ? "Running New (2-File) Excel Pipeline..." : "Running Excel Pipeline...", 2);
     clearLogs();
     await new Promise(r => setTimeout(r, 50)); // Allow UI to update
     
     try {
-        if (uniqueCodes.length === 1) {
+        if (isNewPipeline) {
+            // ====================================================
+            // NEW 2-FILE PIPELINE (DropShip + IndoPrimo)
+            // ====================================================
+            if (uniqueCodes.length === 1) {
+                // SINGLE PARTY MODE (2 Files: DropShip + IndoPrimo)
+                const dropShipId = parseInt(selectOdFile.value);
+                const indoPrimoId = parseInt(selectDtFile.value);
+                
+                let dropShipFileObj, indoPrimoFileObj;
+                const partyCode = uniqueCodes[0];
+                
+                if (dropShipId && indoPrimoId) {
+                    dropShipFileObj = filesList.find(f => f.id === dropShipId);
+                    indoPrimoFileObj = filesList.find(f => f.id === indoPrimoId);
+                } else {
+                    const groupFiles = filesList.filter(f => getPartyCode(f) === partyCode);
+                    dropShipFileObj = groupFiles.find(f => f.category === 'OD' || f.name.toLowerCase().includes('dropship') || f.name.toLowerCase().includes('seller_orders_report'));
+                    indoPrimoFileObj = groupFiles.find(f => f.name.toLowerCase().includes('indoprimo') || f.name.toLowerCase().includes('itemdetails') || f.name.toLowerCase().includes('sale') || f.name.toLowerCase().includes('saledata') || (f !== dropShipFileObj && f.category !== 'OD'));
+                    
+                    if (!dropShipFileObj) {
+                        dropShipFileObj = filesList.find(f => f.category === 'OD' || f.name.toLowerCase().includes('dropship') || f.name.toLowerCase().includes('seller_orders_report'));
+                    }
+                    if (!indoPrimoFileObj) {
+                        indoPrimoFileObj = filesList.find(f => f !== dropShipFileObj);
+                    }
+                }
+                
+                if (!dropShipFileObj || !indoPrimoFileObj) {
+                    const missing = [];
+                    if (!dropShipFileObj) missing.push("DropShip File");
+                    if (!indoPrimoFileObj) missing.push("IndoPrimo File");
+                    showToast(`Missing required files: ${missing.join(', ')}`, "error");
+                    hideLoading();
+                    return;
+                }
+                
+                // Clean up previous run dynamic files
+                filesList = filesList.filter(f => 
+                    f.category !== "Combined" && 
+                    f.name !== "PARTLY CANCEL ORDER.xlsx" && 
+                    f.name !== "GST NOT APPLICABLE.xlsx" && 
+                    f.name !== "2 MORE INVOICE.xlsx" && 
+                    !f.name.toLowerCase().includes("myntra invoice summary") &&
+                    f.name !== "SUMMARY.xlsx" &&
+                    !f.name.endsWith("-PARTLY CANCEL ORDER.xlsx") && 
+                    !f.name.endsWith("-GST NOT APPLICABLE.xlsx") && 
+                    !f.name.endsWith("-2 MORE INVOICE.xlsx") &&
+                    !f.name.endsWith("-SUMMARY.xlsx")
+                );
+                
+                updateProgress(10, "Loading DropShip and IndoPrimo sheet data...");
+                await new Promise(r => setTimeout(r, 30));
+                const metrics = await processPartyPipelineNew2Files(dropShipFileObj, indoPrimoFileObj, partyCode, false);
+                updateProgress(90, "Finalizing output files...");
+                await new Promise(r => setTimeout(r, 30));
+                
+                // Update UI Details Log elements for Single Mode
+                logTdFilename.textContent = metrics.odName;
+                logTdRange.textContent = metrics.generatedRange;
+                logTdDates.textContent = metrics.dateRangeStr;
+                logTdB2p2.textContent = metrics.b2p2String;
+                if (rangeValue) rangeValue.textContent = metrics.generatedRange;
+                
+                statDtSold.textContent = metrics.soldCnt;
+                statDtCancelled.textContent = metrics.cancelCnt;
+                
+                // Populate Cancelled / Duplicate Invoices badges list
+                cancelledInvoicesList.innerHTML = '';
+                if (metrics.cancelledInvoices && metrics.cancelledInvoices.length > 0) {
+                    metrics.cancelledInvoices.forEach(inv => {
+                        const badge = document.createElement('span');
+                        badge.className = 'cancelled-invoice-badge';
+                        badge.textContent = inv;
+                        badge.addEventListener('click', () => {
+                            searchInput.value = inv;
+                            renderFilesTable();
+                        });
+                        cancelledInvoicesList.appendChild(badge);
+                    });
+                } else {
+                    cancelledInvoicesList.innerHTML = '<span class="text-muted">No duplicate invoices found.</span>';
+                }
+            } else {
+                // BATCH MODE for 2 Files
+                addLog(`Batch Mode Active (2-File): Processing ${uniqueCodes.length} parties.`, "warning");
+                
+                // Clean up previous run dynamic files
+                filesList = filesList.filter(f => 
+                    f.category !== "Combined" && 
+                    f.name !== "PARTLY CANCEL ORDER.xlsx" && 
+                    f.name !== "GST NOT APPLICABLE.xlsx" && 
+                    f.name !== "2 MORE INVOICE.xlsx" && 
+                    !f.name.toLowerCase().includes("myntra invoice summary") &&
+                    f.name !== "SUMMARY.xlsx" &&
+                    !f.name.endsWith("-PARTLY CANCEL ORDER.xlsx") && 
+                    !f.name.endsWith("-GST NOT APPLICABLE.xlsx") && 
+                    !f.name.endsWith("-2 MORE INVOICE.xlsx") &&
+                    !f.name.endsWith("-SUMMARY.xlsx")
+                );
+                
+                let successCount = 0;
+                const allCancelledInvoices = [];
+                const batchMetrics = [];
+                
+                for (let pi = 0; pi < uniqueCodes.length; pi++) {
+                    const partyCode = uniqueCodes[pi];
+                    const batchBase = 5;
+                    const batchRange = 85;
+                    const partyProgress = batchBase + Math.round((pi / uniqueCodes.length) * batchRange);
+                    updateProgress(partyProgress, `Processing Party ${partyCode} (${pi + 1}/${uniqueCodes.length})...`);
+                    await new Promise(r => setTimeout(r, 30));
+                    
+                    const groupFiles = filesList.filter(f => getPartyCode(f) === partyCode);
+                    const dropShipFile = groupFiles.find(f => f.category === 'OD' || f.name.toLowerCase().includes('dropship') || f.name.toLowerCase().includes('seller_orders_report'));
+                    const indoPrimoFile = groupFiles.find(f => f.name.toLowerCase().includes('indoprimo') || f.name.toLowerCase().includes('itemdetails') || f.name.toLowerCase().includes('sale') || f.name.toLowerCase().includes('saledata') || (f !== dropShipFile && f.category !== 'OD'));
+                    
+                    if (dropShipFile && indoPrimoFile) {
+                        try {
+                            const metrics = await processPartyPipelineNew2Files(dropShipFile, indoPrimoFile, partyCode, true);
+                            successCount++;
+                            if (metrics.cancelledInvoices) {
+                                allCancelledInvoices.push(...metrics.cancelledInvoices);
+                            }
+                            batchMetrics.push(metrics);
+                        } catch (err) {
+                            addLog(`Error processing Party ${partyCode}: ${err.message}`, "error");
+                        }
+                    } else {
+                        const missing = [];
+                        if (!dropShipFile) missing.push("DropShip File");
+                        if (!indoPrimoFile) missing.push("IndoPrimo File");
+                        addLog(`Skipping Party ${partyCode}: Missing files: ${missing.join(', ')}`, "error");
+                    }
+                }
+                
+                // Generate single combined SUMMARY file for the entire batch
+                if (batchMetrics.length > 0) {
+                    const ws1Rows = [];
+                    batchMetrics.forEach(m => {
+                        ws1Rows.push([m.partyCodeName]);
+                        ws1Rows.push([m.generatedRange]);
+                        ws1Rows.push([]);
+                    });
+                    const summaryWS1 = XLSX.utils.aoa_to_sheet(ws1Rows);
+                    
+                    const ws2Rows = [["File Name", "Invoice Range", "Date Range", "B2 / P2 Value"]];
+                    batchMetrics.forEach(m => {
+                        ws2Rows.push([m.odName, m.generatedRange, m.dateRangeStr, m.b2p2String]);
+                    });
+                    const summaryWS2 = XLSX.utils.aoa_to_sheet(ws2Rows);
+                    
+                    const summaryWB = XLSX.utils.book_new();
+                    XLSX.utils.book_append_sheet(summaryWB, summaryWS1, "Party Details");
+                    XLSX.utils.book_append_sheet(summaryWB, summaryWS2, "Log Details");
+                    
+                    const summaryArrayBuffer = XLSX.write(summaryWB, { bookType: 'xlsx', type: 'array' });
+                    const summaryBlob = new Blob([summaryArrayBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                    
+                    const summaryFileName = getSummaryTimestampFilename();
+                    filesList.push({
+                        id: nextId++,
+                        name: summaryFileName,
+                        path: summaryFileName,
+                        ext: "xlsx",
+                        originalFile: summaryBlob,
+                        category: "unmatched",
+                        renamedName: summaryFileName,
+                        partyCode: "__BATCH_ROOT__",
+                        partyRange: "",
+                        parsedAOA: ws1Rows
+                    });
+                    addLog(`Combined "${summaryFileName}" generated containing logs for all ${batchMetrics.length} parties.`, "success");
+                }
+                
+                updateProgress(92, "Building summary files...");
+                await new Promise(r => setTimeout(r, 30));
+                addLog(`Batch Process Finished. Successfully processed ${successCount}/${uniqueCodes.length} parties.`, "success");
+                
+                // Set batch general indicators in UI
+                logTdFilename.textContent = `Batch (${successCount} parties)`;
+                logTdRange.textContent = "See SUMMARY.xlsx in each folder";
+                logTdDates.textContent = "See SUMMARY.xlsx in each folder";
+                logTdB2p2.textContent = "See SUMMARY.xlsx in each folder";
+                
+                statDtSold.textContent = "Multiple";
+                statDtCancelled.textContent = "Multiple";
+                
+                cancelledInvoicesList.innerHTML = '';
+                if (allCancelledInvoices.length > 0) {
+                    allCancelledInvoices.forEach(inv => {
+                        const badge = document.createElement('span');
+                        badge.className = 'cancelled-invoice-badge';
+                        badge.textContent = inv;
+                        badge.addEventListener('click', () => {
+                            searchInput.value = inv;
+                            renderFilesTable();
+                        });
+                        cancelledInvoicesList.appendChild(badge);
+                    });
+                } else {
+                    cancelledInvoicesList.innerHTML = '<span class="text-muted">No cancelled invoices found.</span>';
+                }
+            }
+        } else {
+            // ====================================================
+            // OLD 3-FILE PIPELINE (OD + DT + Sale Summary)
+            // ====================================================
+            if (uniqueCodes.length === 1) {
             // SINGLE PARTY MODE (Uses manual mappings if provided, else auto-pairs)
             const odId = parseInt(selectOdFile.value);
             const dtId = parseInt(selectDtFile.value);
@@ -1802,6 +2711,7 @@ async function processUploadedFiles() {
                 cancelledInvoicesList.innerHTML = '<span class="text-muted">No cancelled invoices found.</span>';
             }
         }
+    }
         
         isProcessed = true;
         updateStats();
@@ -2055,7 +2965,8 @@ async function downloadAllAsZip() {
                rName.toLowerCase().includes("summary") ||
                rName.startsWith("myntra invoice summary") ||
                rName === "SUMMARY.xlsx" || rName === "PARTLY CANCEL ORDER.xlsx" || 
-               rName === "GST NOT APPLICABLE.xlsx" || rName === "2 MORE INVOICE.xlsx";
+               rName === "GST NOT APPLICABLE.xlsx" || rName === "2 MORE INVOICE.xlsx" ||
+               rName.includes("GST NOT APPLICABLE") || rName.includes("2 MORE INVOICE");
     });
     
     if (outputFiles.length === 0) {
@@ -2082,13 +2993,13 @@ async function downloadAllAsZip() {
         let zipName = "";
         
         if (partyCodesArray.length === 1) {
-            zipName = `${partyCodesArray[0]} process.zip`;
+            zipName = `${partyCodesArray[0]} processed.zip`;
         } else if (partyCodesArray.length > 1) {
-            zipName = `${partyCodesArray[0]}-${partyCodesArray[partyCodesArray.length - 1]} process.zip`;
+            zipName = `${partyCodesArray[0]}-${partyCodesArray[partyCodesArray.length - 1]} processed.zip`;
         } else if (uploadedZipBaseName && !uploadedZipBaseName.includes("bundle") && !uploadedZipBaseName.includes("myntra_data_arrange")) {
-            zipName = `${uploadedZipBaseName} process.zip`;
+            zipName = `${uploadedZipBaseName} processed.zip`;
         } else {
-            zipName = "myntra_data_arrange_process.zip";
+            zipName = "myntra_data_arrange_processed.zip";
         }
         
         const keepStructure = toggleStructure.checked;
@@ -2478,7 +3389,7 @@ const SEP_CATEGORIES = {
     simple: {
         id: 'simple',
         name: 'SIMPLE',
-        field: 6, // Column G
+        field: 6, // Column G (Old rule, default) or Column D (3, New rule)
         headerRows: 2,
         dataStartRow: 3,
         suffix: '-MYNTRA',
@@ -2529,7 +3440,7 @@ let sepFullviewCategory = 'all'; // 'all', 'simple', 'details', 'summary', 'tax'
 let sepSessionTimerInterval = null;
 
 // IndexedDB Session Storage Config (1 Hour Expiry) for Separate Tab
-const SEP_DB_NAME = 'MyntraSeparateCacheDB';
+const SEP_DB_NAME = 'MyntraSeparateCacheDB_v2';
 const SEP_DB_STORE = 'separateSession';
 const SEP_DB_VERSION = 1;
 const SEP_SESSION_EXPIRY_MS = 60 * 60 * 1000; // 1 Hour
@@ -2582,11 +3493,13 @@ async function saveSeparateSessionToStorage() {
         }
 
         const expiresAt = Date.now() + SEP_SESSION_EXPIRY_MS;
+        const toggleSimple = document.getElementById('toggle-simple-rule');
         const sessionData = {
             id: 'currentSession',
             timestamp: Date.now(),
             expiresAt: expiresAt,
-            categories: serializedCats
+            categories: serializedCats,
+            simpleRuleIsNew: toggleSimple ? toggleSimple.checked : false
         };
 
         const tx = db.transaction([SEP_DB_STORE], 'readwrite');
@@ -2614,6 +3527,20 @@ async function loadSeparateSessionFromStorage() {
             if (now > data.expiresAt) {
                 clearSeparateSessionStorage();
                 return;
+            }
+
+            if (data && data.simpleRuleIsNew) {
+                const toggleSimple = document.getElementById('toggle-simple-rule');
+                if (toggleSimple) {
+                    toggleSimple.checked = true;
+                    updateSimpleRuleUI();
+                }
+            } else {
+                const toggleSimple = document.getElementById('toggle-simple-rule');
+                if (toggleSimple) {
+                    toggleSimple.checked = false;
+                    updateSimpleRuleUI();
+                }
             }
 
             if (data.categories) {
@@ -2725,6 +3652,100 @@ function hideSepSessionBanner() {
     }
 }
 
+// Simple Rule Toggle UI & Field Update (ON = New [Col D, field: 3], OFF = Old [Col G, field: 6])
+function updateSimpleRuleUI() {
+    const toggle = document.getElementById('toggle-simple-rule');
+    const isNew = toggle ? toggle.checked : false;
+    const ruleContainer = document.getElementById('sep-rule-container');
+    const ruleText = document.getElementById('label-simple-rule');
+    const titleSimple = document.getElementById('sep-title-simple');
+    const subtextSimple = document.getElementById('sep-subtext-simple');
+    const cardTitleSimple = document.getElementById('sep-card-title-simple');
+    const thColSimple = document.getElementById('sep-th-col-simple');
+
+    if (isNew) {
+        SEP_CATEGORIES.simple.field = 3; // Column D
+        if (ruleContainer) ruleContainer.classList.remove('is-old');
+        if (ruleText) ruleText.textContent = "New";
+        if (titleSimple) titleSimple.textContent = "📦 1. SIMPLE (Column D)";
+        if (subtextSimple) subtextSimple.textContent = "Split by Column D (New)";
+        if (cardTitleSimple) cardTitleSimple.textContent = "📦 1. SIMPLE (Column D)";
+        if (thColSimple) thColSimple.textContent = "Unique Value (Col D)";
+    } else {
+        SEP_CATEGORIES.simple.field = 6; // Column G
+        if (ruleContainer) ruleContainer.classList.add('is-old');
+        if (ruleText) ruleText.textContent = "Old";
+        if (titleSimple) titleSimple.textContent = "📦 1. SIMPLE (Column G)";
+        if (subtextSimple) subtextSimple.textContent = "Split by Column G (Old)";
+        if (cardTitleSimple) cardTitleSimple.textContent = "📦 1. SIMPLE (Column G)";
+        if (thColSimple) thColSimple.textContent = "Unique Value (Col G)";
+    }
+}
+
+async function reprocessSimpleIfLoaded() {
+    const state = sepCategoryState.simple;
+    if (!state || !state.file) return;
+    if (state.uniqueValues.length === 0 && !state.aoa) return;
+
+    const catConfig = SEP_CATEGORIES.simple;
+    const filterField = catConfig.field;
+    const dataStartRow = catConfig.dataStartRow;
+
+    // Read fresh AOA from original file/blob so column values are not permanently mutated
+    let aoa = null;
+    try {
+        aoa = await readExcelAsAOA(state.file);
+    } catch (e) {
+        console.warn("Could not re-read simple file AOA:", e);
+        return;
+    }
+    if (!aoa || aoa.length === 0) return;
+    state.aoa = aoa;
+
+    const groups = new Map();
+    const uniqueValues = [];
+
+    for (let r = dataStartRow - 1; r < aoa.length; r++) {
+        const row = aoa[r];
+        if (!row) continue;
+
+        const rawVal = row[filterField];
+        let cleanVal = cleanCell(rawVal).trim();
+
+        if (cleanVal === "" || cleanVal.toLowerCase() === "warehouse code/name" || cleanVal.toLowerCase() === "party code" || cleanVal.toLowerCase() === "state code") {
+            continue;
+        }
+
+        cleanVal = normalizeMyPartyCode(cleanVal);
+        row[filterField] = cleanVal;
+
+        if (!groups.has(cleanVal)) {
+            groups.set(cleanVal, []);
+            uniqueValues.push(cleanVal);
+        }
+        groups.get(cleanVal).push(row);
+    }
+
+    uniqueValues.sort((a, b) => {
+        const numA = parseInt(a, 10);
+        const numB = parseInt(b, 10);
+        if (!isNaN(numA) && !isNaN(numB) && numA !== numB) return numA - numB;
+        return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+    });
+
+    state.uniqueValues = uniqueValues;
+    state.groups = groups;
+
+    const badge = document.getElementById('sep-badge-simple');
+    if (badge) {
+        badge.textContent = `${uniqueValues.length} unique`;
+    }
+
+    renderAllSeparatePreviews();
+    saveSeparateSessionToStorage();
+    showToast(`Simple split updated to ${catConfig.field === 3 ? 'Column D (New)' : 'Column G (Old)'}: ${uniqueValues.length} unique files.`, "info");
+}
+
 function setupSeparateFile() {
     // Setup dropzones for each category
     ['simple', 'details', 'summary', 'tax'].forEach(catKey => {
@@ -2807,6 +3828,18 @@ function setupSeparateFile() {
     if (btnStartSeparate) {
         btnStartSeparate.addEventListener('click', startSeparateProcess);
     }
+
+    // Simple Rule Toggle (ON = New [Col D], OFF = Old [Col G])
+    const toggleSimpleRule = document.getElementById('toggle-simple-rule');
+    if (toggleSimpleRule) {
+        toggleSimpleRule.checked = false;
+        toggleSimpleRule.addEventListener('change', () => {
+            updateSimpleRuleUI();
+            reprocessSimpleIfLoaded();
+            saveSeparateSessionToStorage();
+        });
+    }
+    updateSimpleRuleUI();
 
     // Restore 1-hour session from IndexedDB if available
     loadSeparateSessionFromStorage();
@@ -2894,7 +3927,9 @@ async function startSeparateProcess() {
             const groups = new Map();
             const uniqueValues = [];
             const dataStartRow = catConfig.dataStartRow;
-            const filterField = catConfig.field;
+            const filterField = (catKey === 'simple')
+                ? ((document.getElementById('toggle-simple-rule') && !document.getElementById('toggle-simple-rule').checked) ? 6 : 3)
+                : catConfig.field;
 
             for (let r = dataStartRow - 1; r < aoa.length; r++) {
                 const row = aoa[r];
@@ -3503,7 +4538,7 @@ let renFullviewCategory = 'all'; // 'all', 'p2', or 'g'
 let renSessionTimerInterval = null;
 
 // IndexedDB Session Storage Config (1 Hour Expiry)
-const REN_DB_NAME = 'MyntraRenameCacheDB';
+const REN_DB_NAME = 'MyntraRenameCacheDB_v2';
 const REN_DB_STORE = 'renameSession';
 const REN_DB_VERSION = 1;
 const REN_SESSION_EXPIRY_MS = 60 * 60 * 1000; // 1 Hour in ms
@@ -3562,12 +4597,14 @@ async function saveRenameSessionToStorage() {
         }));
 
         const expiresAt = Date.now() + REN_SESSION_EXPIRY_MS;
+        const toggleRenGMove = document.getElementById('toggle-ren-g-move');
         const sessionData = {
             id: 'currentSession',
             timestamp: Date.now(),
             expiresAt: expiresAt,
             isProcessed: renIsProcessed,
-            files: serializedFiles
+            files: serializedFiles,
+            renGMoveIsMerge: toggleRenGMove ? toggleRenGMove.checked : false
         };
 
         const tx = db.transaction([REN_DB_STORE], 'readwrite');
@@ -3596,6 +4633,20 @@ async function loadRenameSessionFromStorage() {
                 // Expired (1 hour passed) -> clear from DB
                 clearRenameSessionStorage();
                 return;
+            }
+
+            if (data && data.renGMoveIsMerge) {
+                const toggleRenGMove = document.getElementById('toggle-ren-g-move');
+                if (toggleRenGMove) {
+                    toggleRenGMove.checked = true;
+                    updateRenGMoveUI();
+                }
+            } else {
+                const toggleRenGMove = document.getElementById('toggle-ren-g-move');
+                if (toggleRenGMove) {
+                    toggleRenGMove.checked = false;
+                    updateRenGMoveUI();
+                }
             }
 
             // Restore files into renUploadedFiles
@@ -3822,7 +4873,26 @@ function setupRenameFile() {
 
     // Move to Tab Actions
     if (btnMoveToMerge) btnMoveToMerge.addEventListener('click', moveToMergeTab);
-    if (btnMoveToFolderCreate) btnMoveToFolderCreate.addEventListener('click', moveToFolderCreateTab);
+    if (btnMoveToFolderCreate) {
+        btnMoveToFolderCreate.addEventListener('click', () => {
+            const toggle = document.getElementById('toggle-ren-g-move');
+            if (toggle && toggle.checked) {
+                moveTaxToMergeTab();
+            } else {
+                moveToFolderCreateTab();
+            }
+        });
+    }
+
+    // Column G Move Target Toggle (ON = Move to Merge, OFF = Move to Folder Create)
+    const toggleRenGMove = document.getElementById('toggle-ren-g-move');
+    if (toggleRenGMove) {
+        toggleRenGMove.addEventListener('change', () => {
+            updateRenGMoveUI();
+            saveRenameSessionToStorage();
+        });
+    }
+    updateRenGMoveUI();
 
     // Full View Modal Triggers
     if (btnOrderFullview) {
@@ -5042,6 +6112,63 @@ function moveToFolderCreateTab() {
     if (folderTabBtn) folderTabBtn.click();
 
     showToast(`${taxFiles.length} Tax files transferred to Folder Create tab!`, "success");
+}
+
+// Move Tax Files to Merge File Tab (when Column G toggle is ON)
+function moveTaxToMergeTab() {
+    const taxFiles = renUploadedFiles.filter(f => f.methodType === 'g');
+    if (taxFiles.length === 0) {
+        showToast("No Tax files available to move.", "error");
+        return;
+    }
+
+    const filesToMerge = taxFiles.map(f => new File([f.fileObj], f.renamedName, { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+
+    // Pass directly to merge tab handler
+    handleMrgFileSelection(filesToMerge);
+
+    // Switch active tab to tab-merge
+    const mergeTabBtn = document.getElementById('btn-merge-file') || document.querySelector('.tab-btn[data-tab="tab-merge"]');
+    if (mergeTabBtn) mergeTabBtn.click();
+
+    showToast(`${taxFiles.length} Tax files transferred to Merge File tab!`, "success");
+}
+
+// Column G Rename Move Toggle UI (ON = Move to Merge, OFF = Move to Folder Create)
+function updateRenGMoveUI() {
+    const toggle = document.getElementById('toggle-ren-g-move');
+    const isMerge = toggle ? toggle.checked : false; // default false
+    const container = document.getElementById('ren-g-move-container');
+    const label = document.getElementById('label-ren-g-move');
+    const btn = document.getElementById('btn-move-to-folder-create');
+    const btnText = document.getElementById('ren-tax-move-text');
+    const btnIcon = document.getElementById('ren-tax-move-icon');
+
+    if (isMerge) {
+        if (container) container.classList.remove('is-old');
+        if (label) label.textContent = "Move: Merge";
+        if (btn) {
+            btn.title = "Transfer Tax files directly to Merge File tab";
+            btn.style.color = "var(--primary)";
+            btn.style.borderColor = "rgba(124, 58, 237, 0.25)";
+        }
+        if (btnText) btnText.textContent = "Move to Merge";
+        if (btnIcon) {
+            btnIcon.innerHTML = `<polyline points="16 3 21 3 21 8"></polyline><line x1="4" y1="20" x2="21" y2="3"></line><polyline points="21 16 21 21 16 21"></polyline><line x1="15" y1="15" x2="21" y2="21"></line><line x1="4" y1="4" x2="9" y2="9"></line>`;
+        }
+    } else {
+        if (container) container.classList.add('is-old');
+        if (label) label.textContent = "Move: Folder";
+        if (btn) {
+            btn.title = "Transfer Tax files directly to Folder Create tab";
+            btn.style.color = "#059669";
+            btn.style.borderColor = "rgba(5, 150, 105, 0.25)";
+        }
+        if (btnText) btnText.textContent = "Move to Folder Create";
+        if (btnIcon) {
+            btnIcon.innerHTML = `<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>`;
+        }
+    }
 }
 
 // Download Zip function (Order only, Tax only, or All)
@@ -8634,6 +9761,33 @@ async function getFilesFromDataTransfer(dataTransfer) {
     return files;
 }
 
+// Folder Create Rule Toggle (ON = New [2 Files: Tax + Summary/Details], OFF = Old [3 Files: Order + Tax + Summary/Details])
+function getFldExpectedCount() {
+    const toggle = document.getElementById('toggle-fld-rule');
+    return (toggle && toggle.checked) ? 2 : 3;
+}
+
+function updateFldRuleUI() {
+    const toggle = document.getElementById('toggle-fld-rule');
+    const isNew = toggle ? toggle.checked : false;
+    const ruleContainer = document.getElementById('fld-rule-container');
+    const ruleText = document.getElementById('label-fld-rule');
+    const ruleTag = document.getElementById('fld-rule-tag');
+    const supportText = document.getElementById('fld-file-support-text');
+
+    if (isNew) {
+        if (ruleContainer) ruleContainer.classList.remove('is-old');
+        if (ruleText) ruleText.textContent = "New (2 Files)";
+        if (ruleTag) ruleTag.textContent = "New: 2 Files / Folder";
+        if (supportText && fldMode === 'files') supportText.textContent = "New: 2 Files / Folder (Tax + Summary/Details)";
+    } else {
+        if (ruleContainer) ruleContainer.classList.add('is-old');
+        if (ruleText) ruleText.textContent = "Old (3 Files)";
+        if (ruleTag) ruleTag.textContent = "Old: 3 Files / Folder";
+        if (supportText && fldMode === 'files') supportText.textContent = "Old: 3 Files / Folder (Order + Tax + Summary/Details)";
+    }
+}
+
 function switchFldMode(mode) {
     if (fldMode === mode) return;
     fldMode = mode;
@@ -8680,7 +9834,7 @@ function switchFldMode(mode) {
         if (fldFileInput) fldFileInput.style.display = 'block';
         if (fldFolderInput) fldFolderInput.style.display = 'none';
         if (fldUploadTitle) fldUploadTitle.textContent = "Upload Files to Group";
-        if (fldFileSupportText) fldFileSupportText.textContent = "Supports .xlsx, .xls, .csv files";
+        if (fldFileSupportText) fldFileSupportText.textContent = getFldExpectedCount() === 2 ? "New: 2 Files / Folder (Tax + Summary/Details)" : "Old: 3 Files / Folder (Order + Tax + Summary/Details)";
         const selectBtn = document.getElementById('btn-fld-select-files');
         if (selectBtn) selectBtn.textContent = "Select Files";
         const fldFileLabel = document.getElementById('fld-file-label');
@@ -8775,7 +9929,7 @@ let fldActiveEditFile = null; // fileData
 let fldFullViewFilter = 'all'; // 'all', 'complete', 'missing'
 
 // IndexedDB Session Storage Config (1 Hour Expiry) for Folder Create Tab
-const FLD_DB_NAME = 'MyntraFolderCreateCacheDB';
+const FLD_DB_NAME = 'MyntraFolderCreateCacheDB_v2';
 const FLD_DB_STORE = 'folderSession';
 const FLD_DB_VERSION = 1;
 const FLD_SESSION_EXPIRY_MS = 60 * 60 * 1000; // 1 Hour
@@ -8823,11 +9977,13 @@ async function saveFolderCreateSessionToStorage() {
         }));
 
         const expiresAt = Date.now() + FLD_SESSION_EXPIRY_MS;
+        const toggleFldRule = document.getElementById('toggle-fld-rule');
         const sessionData = {
             id: 'currentSession',
             timestamp: Date.now(),
             expiresAt: expiresAt,
             fldMode: fldMode,
+            fldRuleIsNew: toggleFldRule ? toggleFldRule.checked : false,
             files: serializedFiles
         };
 
@@ -8856,6 +10012,20 @@ async function loadFolderCreateSessionFromStorage() {
             if (now > data.expiresAt) {
                 clearFolderCreateSessionStorage();
                 return;
+            }
+
+            if (data && data.fldRuleIsNew) {
+                const toggleFldRule = document.getElementById('toggle-fld-rule');
+                if (toggleFldRule) {
+                    toggleFldRule.checked = true;
+                    updateFldRuleUI();
+                }
+            } else {
+                const toggleFldRule = document.getElementById('toggle-fld-rule');
+                if (toggleFldRule) {
+                    toggleFldRule.checked = false;
+                    updateFldRuleUI();
+                }
             }
 
             if (data.files && data.files.length > 0) {
@@ -8964,15 +10134,16 @@ function getFldPrefixGroups() {
     return groups;
 }
 
-// Sort prefixes with Error/Missing folders (< 3 files) always on top!
+// Sort prefixes with Error/Missing folders (< expectedCount files) always on top!
 function getSortedFldPrefixes(groups, priorityError = true) {
+    const expectedCount = getFldExpectedCount();
     const prefixes = Array.from(groups.keys());
     prefixes.sort((a, b) => {
         if (priorityError) {
             const countA = (groups.get(a) || []).length;
             const countB = (groups.get(b) || []).length;
-            const isMissingA = countA < 3 ? 1 : 0;
-            const isMissingB = countB < 3 ? 1 : 0;
+            const isMissingA = countA < expectedCount ? 1 : 0;
+            const isMissingB = countB < expectedCount ? 1 : 0;
             if (isMissingA !== isMissingB) {
                 return isMissingB - isMissingA; // Missing folders (1) come before complete folders (0)
             }
@@ -9004,10 +10175,11 @@ function recalculateFldGroupsAndPreview() {
     const groups = getFldPrefixGroups();
     const sortedPrefixes = getSortedFldPrefixes(groups, true); // Error folders always on top
 
+    const expectedCount = getFldExpectedCount();
     let missingFoldersCount = 0;
     sortedPrefixes.forEach(prefix => {
         const filesInGroup = groups.get(prefix);
-        if (filesInGroup.length < 3) {
+        if (filesInGroup.length < expectedCount) {
             missingFoldersCount++;
         }
     });
@@ -9051,12 +10223,13 @@ function renderFldAccordionTable(tbodyElement, sortedPrefixes, groups, isFullVie
     tbodyElement.innerHTML = "";
 
     let displayedIndex = 1;
+    const expectedCount = getFldExpectedCount();
 
     sortedPrefixes.forEach(prefix => {
         const filesInGroup = groups.get(prefix) || [];
         const count = filesInGroup.length;
-        const isComplete = count >= 3;
-        const missingCount = isComplete ? 0 : (3 - count);
+        const isComplete = count >= expectedCount;
+        const missingCount = isComplete ? 0 : (expectedCount - count);
 
         // Apply status filter
         if (filterMode === 'complete' && !isComplete) return;
@@ -9074,7 +10247,7 @@ function renderFldAccordionTable(tbodyElement, sortedPrefixes, groups, isFullVie
 
         let statusBadge = isComplete
             ? `<span class="badge success" style="background: rgba(16, 185, 129, 0.15); color: #10b981; padding: 3px 8px; border-radius: 6px; font-weight: 700; font-size: 0.72rem; display: inline-flex; align-items: center; gap: 4px;">
-                <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none"><polyline points="20 6 9 17 4 12"></polyline></svg> 3+ Files (Complete)
+                <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none"><polyline points="20 6 9 17 4 12"></polyline></svg> ${expectedCount}+ Files (Complete)
                </span>`
             : `<span class="badge danger" style="background: rgba(239, 68, 68, 0.15); color: #ef4444; padding: 3px 8px; border-radius: 6px; font-weight: 700; font-size: 0.72rem; display: inline-flex; align-items: center; gap: 4px;">
                 <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg> ${count} Files (${missingCount} Missing)
@@ -9171,7 +10344,7 @@ function renderFldAccordionTable(tbodyElement, sortedPrefixes, groups, isFullVie
 
             let subTableHtml = `
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem; padding: 0.2rem 0.4rem;">
-                    <span style="font-size: 0.74rem; font-weight: 700; color: var(--primary);">📂 Files inside folder "${prefix}" (${count}/3 ${isComplete ? 'Complete ✅' : 'Missing ⚠️'}):</span>
+                    <span style="font-size: 0.74rem; font-weight: 700; color: var(--primary);">📂 Files inside folder "${prefix}" (${count}/${expectedCount} ${isComplete ? 'Complete ✅' : 'Missing ⚠️'}):</span>
                     <button class="btn btn-secondary btn-add-sub-file" data-prefix="${prefix}" style="padding: 0.22rem 0.6rem; font-size: 0.7rem; color: #10b981; font-weight: 700; border-color: rgba(16, 185, 129, 0.3); display: inline-flex; align-items: center; gap: 4px;">
                         <svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" stroke-width="2.5" fill="none"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                         Add / Upload File
@@ -9222,9 +10395,9 @@ function renderFldAccordionTable(tbodyElement, sortedPrefixes, groups, isFullVie
                 `;
             });
 
-            // 2. Render missing slots if folder has < 3 files
-            if (count < 3) {
-                for (let slotIdx = count + 1; slotIdx <= 3; slotIdx++) {
+            // 2. Render missing slots if folder has < expectedCount files
+            if (count < expectedCount) {
+                for (let slotIdx = count + 1; slotIdx <= expectedCount; slotIdx++) {
                     subTableHtml += `
                         <tr class="fld-missing-slot-row" data-prefix="${prefix}" style="background: rgba(239, 68, 68, 0.04); border-left: 3px dashed #ef4444; cursor: pointer;" title="Click to upload missing file #${slotIdx} directly into folder ${prefix}">
                             <td style="text-align: center; color: #dc2626; font-weight: 700;">${slotIdx}</td>
@@ -9519,6 +10692,18 @@ function setupFolderCreate() {
     // Setup Full View Modal controls
     setupFldFullViewModal();
 
+    // Folder Create Rule Toggle (ON = New [2 Files: Tax + Summary/Details], OFF = Old [3 Files: Order + Tax + Summary/Details])
+    const toggleFldRule = document.getElementById('toggle-fld-rule');
+    if (toggleFldRule) {
+        toggleFldRule.checked = false;
+        toggleFldRule.addEventListener('change', () => {
+            updateFldRuleUI();
+            recalculateFldGroupsAndPreview();
+            saveFolderCreateSessionToStorage();
+        });
+    }
+    updateFldRuleUI();
+
     // Restore 1-hour session from IndexedDB if available
     loadFolderCreateSessionFromStorage();
 }
@@ -9624,12 +10809,13 @@ function renderCopyTargetFoldersList() {
     const sortedPrefixes = getSortedFldPrefixes(groups, true);
 
     const currentPrefix = fldActiveCopyFile.folderPrefix;
+    const expectedCount = getFldExpectedCount();
 
-    // Filter target folders: ONLY missing / error folders (count < 3) and exclude source folder
+    // Filter target folders: ONLY missing / error folders (count < expectedCount) and exclude source folder
     let targetPrefixes = sortedPrefixes.filter(p => {
         if (p === currentPrefix) return false;
         const filesInGroup = groups.get(p) || [];
-        return filesInGroup.length < 3; // ONLY missing / error folders!
+        return filesInGroup.length < expectedCount; // ONLY missing / error folders!
     });
 
     if (query) {
@@ -9639,7 +10825,7 @@ function renderCopyTargetFoldersList() {
     if (targetPrefixes.length === 0) {
         container.innerHTML = `<div style="text-align: center; color: #10b981; padding: 1.2rem; font-size: 0.78rem; font-weight: 600;">
             <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2.2" fill="none" style="display: block; margin: 0 auto 0.35rem auto;"><polyline points="20 6 9 17 4 12"></polyline></svg>
-            No missing folders found! All other folders are already complete (3+ files).
+            No missing folders found! All other folders are already complete (${expectedCount}+ files).
         </div>`;
         return;
     }
@@ -9647,7 +10833,7 @@ function renderCopyTargetFoldersList() {
     targetPrefixes.forEach(prefix => {
         const filesInGroup = groups.get(prefix) || [];
         const count = filesInGroup.length;
-        const missingCount = 3 - count;
+        const missingCount = expectedCount - count;
 
         const row = document.createElement('label');
         row.style.display = 'flex';
@@ -9877,9 +11063,10 @@ function downloadFldErrorExcel() {
     sortedPrefixes.forEach((prefix, idx) => {
         const filesInGroup = groups.get(prefix) || [];
         const count = filesInGroup.length;
-        const isComplete = count >= 3;
-        const missingCount = isComplete ? 0 : (3 - count);
-        const status = isComplete ? "Complete (3+ Files)" : `ERROR: Missing ${missingCount} File(s)`;
+        const expectedCount = getFldExpectedCount();
+        const isComplete = count >= expectedCount;
+        const missingCount = isComplete ? 0 : (expectedCount - count);
+        const status = isComplete ? `Complete (${expectedCount}+ Files)` : `ERROR: Missing ${missingCount} File(s)`;
         const filesStr = filesInGroup.map(f => f.name).join("; ");
 
         if (!isComplete) errorCount++;
@@ -10188,11 +11375,12 @@ async function runFolderCreateProcess() {
             ["Folder Name", "Current File Count", "Missing Files Count", "Status"]
         ];
         
+        const expectedCount = getFldExpectedCount();
         sortedPrefixes.forEach(prefix => {
             const filesInGroup = groups.get(prefix);
             const count = filesInGroup.length;
-            const missingCount = count < 3 ? (3 - count) : 0;
-            const status = count >= 3 ? "Complete" : `Missing ${missingCount} File(s)`;
+            const missingCount = count < expectedCount ? (expectedCount - count) : 0;
+            const status = count >= expectedCount ? "Complete" : `Missing ${missingCount} File(s)`;
             summaryAOA.push([prefix, count, missingCount, status]);
         });
         
@@ -11353,6 +12541,12 @@ function resetProcessorTab() {
     if (statDtCancelled) statDtCancelled.textContent = "0";
     if (statUnmatched) statUnmatched.textContent = "0";
 
+    const toggleProcRule = document.getElementById('toggle-proc-rule');
+    if (toggleProcRule) {
+        toggleProcRule.checked = false;
+    }
+    updateProcRuleUI();
+
     showToast("Processor tab cleaned & reset.", "success");
 }
 
@@ -11395,6 +12589,13 @@ function resetRenameTab() {
     closeEditPrefixModal();
     const renFullviewModal = document.getElementById('ren-fullview-modal');
     if (renFullviewModal) renFullviewModal.classList.remove('show');
+
+    // Reset Column G move target toggle to default OFF (Move to Folder Create)
+    const toggleRenGMove = document.getElementById('toggle-ren-g-move');
+    if (toggleRenGMove) {
+        toggleRenGMove.checked = false;
+    }
+    updateRenGMoveUI();
 
     // Clear 1-hour IndexedDB session storage immediately
     clearRenameSessionStorage();
@@ -11494,6 +12695,12 @@ function resetSeparateTab() {
     closeSepFullViewModal();
     clearSeparateSessionStorage();
 
+    const toggleSimpleRule = document.getElementById('toggle-simple-rule');
+    if (toggleSimpleRule) {
+        toggleSimpleRule.checked = false;
+    }
+    updateSimpleRuleUI();
+
     showToast("Separate tab cleaned & reset.", "success");
 }
 
@@ -11556,6 +12763,12 @@ function resetFolderCreateTab() {
     closeCopyFileToFoldersModal();
     closeEditFldFileModal();
     clearFolderCreateSessionStorage();
+
+    const toggleFldRule = document.getElementById('toggle-fld-rule');
+    if (toggleFldRule) {
+        toggleFldRule.checked = false;
+    }
+    updateFldRuleUI();
 
     showToast("Folder Create tab cleaned & reset.", "success");
 }

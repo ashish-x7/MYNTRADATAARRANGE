@@ -598,6 +598,82 @@ input:checked + .slider:before {
     color: var(--text-primary);
 }
 
+/* Separate Tab: Simple Rule Toggle (ON = New [Col D], OFF = Old [Col G]) */
+.sep-rule-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: rgba(124, 58, 237, 0.08);
+    padding: 2px 7px;
+    border-radius: 12px;
+    border: 1px solid rgba(124, 58, 237, 0.22);
+    cursor: pointer;
+    user-select: none;
+    transition: all 0.2s ease;
+}
+.sep-rule-toggle:hover {
+    background: rgba(124, 58, 237, 0.14);
+}
+.sep-rule-toggle.is-old {
+    background: rgba(100, 116, 139, 0.1);
+    border-color: rgba(100, 116, 139, 0.25);
+}
+.sep-rule-toggle.is-old:hover {
+    background: rgba(100, 116, 139, 0.16);
+}
+.sep-rule-switch {
+    position: relative;
+    display: inline-block;
+    width: 28px;
+    height: 15px;
+    margin: 0;
+    pointer-events: none;
+}
+.sep-rule-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+    position: absolute;
+}
+.sep-rule-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #94a3b8;
+    transition: .25s ease;
+    border-radius: 15px;
+}
+.sep-rule-slider:before {
+    position: absolute;
+    content: "";
+    height: 11px;
+    width: 11px;
+    left: 2px;
+    bottom: 2px;
+    background-color: white;
+    transition: .25s ease;
+    border-radius: 50%;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.25);
+}
+.sep-rule-switch input:checked + .sep-rule-slider {
+    background-color: #7c3aed;
+}
+.sep-rule-switch input:checked + .sep-rule-slider:before {
+    transform: translateX(13px);
+}
+.sep-rule-text {
+    font-size: 0.67rem;
+    font-weight: 700;
+    color: #7c3aed;
+    line-height: 1;
+}
+.sep-rule-toggle.is-old .sep-rule-text {
+    color: #64748b;
+}
+
 .actions-row {
     display: flex;
     justify-content: space-between;
