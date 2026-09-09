@@ -1791,18 +1791,21 @@ async function processPartyPipelineNew2Files(dropShipFileObj, indoPrimoFileObj, 
     
     // Dynamic header lookup in DropShip file
     const findColIndex = (name, fallback) => {
-        const idx = headerRow.findIndex(h => String(h || "").trim().toLowerCase() === name.toLowerCase());
+        const lowerName = name.toLowerCase();
+        let idx = headerRow.findIndex(h => String(h || "").trim().toLowerCase() === lowerName);
+        if (idx !== -1) return idx;
+        idx = headerRow.findIndex(h => String(h || "").trim().toLowerCase().includes(lowerName));
         return idx !== -1 ? idx : fallback;
     };
     
     const idxTaxRate = findColIndex("Tax Rate", 41);
     const idxSellingPrice = findColIndex("Selling Price", 47);
-    const idxItemPrice = findColIndex("Item Price(Excluding Tax)", 49);
-    const idxIgstRate = findColIndex("IGST Rate", 59);
-    const idxIgstAmount = findColIndex("IGST Amount", 60);
-    const idxCgstAmount = findColIndex("CGST Amount", 61);
-    const idxSgstAmount = findColIndex("SGST Amount", 62);
-    const idxBillingState = findColIndex("Billing State", 39); // Col AN is 39
+    const idxItemPrice = findColIndex("Item Price(Excluding Tax)", findColIndex("Item Price", 49));
+    const idxTaxAmount = findColIndex("Tax", findColIndex("IGST Rate", 59));
+    const idxIgst = findColIndex("IGST", findColIndex("IGST Amount", 60));
+    const idxCgst = findColIndex("CGST", findColIndex("CGST Amount", 61));
+    const idxSgst = findColIndex("SGST", findColIndex("SGST Amount", 62));
+    const idxBillingState = findColIndex("Billing State", findColIndex("State", 87));
     
     const idxQuantity = findColIndex("Quantity", findColIndex("Item Quantity", findColIndex("Qty", -1)));
     const idxHsn = headerRow.findIndex(h => String(h || "").trim().toLowerCase().includes("hsn")) !== -1
@@ -1886,16 +1889,25 @@ async function processPartyPipelineNew2Files(dropShipFileObj, indoPrimoFileObj, 
         const row = cleanDropShipRows[r];
         const invoiceNo = cleanCell(row[6]) || cleanCell(row[3]); // Col G (EE Invoice No)
         const taxRate = cleanCell(row[idxTaxRate]);
+        const taxNum = parseFloat(taxRate);
+        const isTaxMissing = (taxRate === "" || 
+                              taxRate === "0" || 
+                              taxRate === "0%" || 
+                              taxRate === "0.00" || 
+                              taxNum === 0 || 
+                              isNaN(taxNum) || 
+                              taxRate.toLowerCase().includes("not") || 
+                              taxRate.toLowerCase().includes("n/a"));
         
-        // If invoice is present and tax rate is blank
-        if (invoiceNo !== "" && taxRate === "") {
+        // If invoice is present and tax rate is blank/missing/0
+        if (invoiceNo !== "" && isTaxMissing) {
             gstCreated = true;
             
             const newGstRow = [
-                cleanCell(row[6]) || cleanCell(row[3]) || "", // EE Invoice No
-                cleanCell(row[8]) || "Sold",                  // Status
-                cleanCell(row[12]) || cleanCell(row[11]) || "", // Date
-                cleanCell(row[idxQuantity !== -1 ? idxQuantity : 17]) || "1", // Quantity
+                invoiceNo,
+                cleanCell(row[8]) || "Sold",
+                cleanCell(row[12]) || cleanCell(row[11]) || "",
+                cleanCell(row[idxQuantity !== -1 ? idxQuantity : 17]) || "1",
                 cleanCell(row[idxSellingPrice]) || "",
                 cleanCell(row[idxItemPrice]) || ""
             ];
@@ -1911,7 +1923,7 @@ async function processPartyPipelineNew2Files(dropShipFileObj, indoPrimoFileObj, 
                 gstCellStyles[`${destRowIndex},${c}`] = { fill: { fgColor: { rgb: hexColor } } };
             }
             
-            const targetLength = Math.max(idxTaxRate, idxSellingPrice, idxItemPrice, idxIgstRate, idxIgstAmount, idxCgstAmount, idxSgstAmount, idxBillingState) + 1;
+            const targetLength = Math.max(idxTaxRate, idxSellingPrice, idxItemPrice, idxTaxAmount, idxIgst, idxCgst, idxSgst, idxBillingState, 87) + 1;
             while (row.length < targetLength) {
                 row.push("");
             }
@@ -1926,20 +1938,29 @@ async function processPartyPipelineNew2Files(dropShipFileObj, indoPrimoFileObj, 
             
             const roundPart = round4(valAV / 1.05);
             const valBH = round4(valAV - roundPart);
-            row[idxIgstRate] = valBH;
+            row[idxTaxAmount] = valBH;
             
-            const stateVal = String(row[idxBillingState] || "").toLowerCase().trim();
-            if (stateVal === "gujarat") {
-                row[idxIgstAmount] = "0";
+            const stateVal = (cleanCell(row[idxBillingState]) || cleanCell(row[39]) || cleanCell(row[87])).toLowerCase().trim();
+            if (stateVal.includes("gujarat") || stateVal === "gj") {
+                row[idxIgst] = "0";
                 const valBJ = round4((valAV - roundPart) / 2);
-                row[idxCgstAmount] = valBJ;
-                row[idxSgstAmount] = valBJ;
+                row[idxCgst] = valBJ;
+                row[idxSgst] = valBJ;
             } else {
                 const valBI = round4(valAV - roundPart);
-                row[idxIgstAmount] = valBI;
-                row[idxCgstAmount] = "0";
-                row[idxSgstAmount] = "0";
+                row[idxIgst] = valBI;
+                row[idxCgst] = "0";
+                row[idxSgst] = "0";
             }
+            
+            // Apply highlights in original DT using dynamic indices matching VBA logic
+            dtCellStyles[`${r},6`] = { fill: { fgColor: { rgb: "C8FFC8" } } };
+            dtCellStyles[`${r},8`] = { fill: { fgColor: { rgb: "C8FFC8" } } };
+            dtCellStyles[`${r},12`] = { fill: { fgColor: { rgb: "C8FFC8" } } };
+            dtCellStyles[`${r},${idxQuantity !== -1 ? idxQuantity : 17}`] = { fill: { fgColor: { rgb: "C8FFC8" } } };
+            dtCellStyles[`${r},${idxSellingPrice}`] = { fill: { fgColor: { rgb: "C8FFC8" } } };
+            dtCellStyles[`${r},${idxItemPrice}`] = { fill: { fgColor: { rgb: "C8FFC8" } } };
+            dtCellStyles[`${r},${idxTaxRate}`] = { fill: { fgColor: { rgb: "B4F0B4" } } };
             
             shadeIndex++;
         }
@@ -2127,6 +2148,7 @@ async function processPartyPipelineNew2Files(dropShipFileObj, indoPrimoFileObj, 
     dropShipFileObj.partyCode = partyCode;
     dropShipFileObj.partyRange = generatedRange;
     dropShipFileObj.parsedAOA = cleanDropShipRows;
+    dropShipFileObj.cellStyles = dtCellStyles;
     
     // Mark IndoPrimo file as non-downloadable category
     if (indoPrimoFileObj) {
@@ -2151,7 +2173,7 @@ async function processPartyPipelineNew2Files(dropShipFileObj, indoPrimoFileObj, 
     if (gstCreated && gstRows.length > 1) {
         const gstWS = XLSX.utils.aoa_to_sheet(gstRows);
         const gstWB = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(gstWB, gstWS, "GST Not Applicable");
+        XLSX.utils.book_append_sheet(gstWB, gstWS, "GST NOT APPLICABLE");
         for (const key in gstCellStyles) {
             const [r, c] = key.split(',').map(Number);
             const cellRef = XLSX.utils.encode_cell({ r, c });
@@ -2172,7 +2194,8 @@ async function processPartyPipelineNew2Files(dropShipFileObj, indoPrimoFileObj, 
             renamedName: "GST NOT APPLICABLE.xlsx",
             partyCode: partyCode,
             partyRange: generatedRange,
-            parsedAOA: gstRows
+            parsedAOA: gstRows,
+            cellStyles: gstCellStyles
         });
         addLog(`[${partyCode}] Generated ${gstFileName} with ${gstRows.length - 1} records.`, "warning");
     }
