@@ -4613,6 +4613,7 @@ async function saveRenameSessionToStorage() {
             rowCount: f.rowCount || 0,
             p2Value: f.p2Value,
             colGValue: f.colGValue,
+            colAValue: f.colAValue || '',
             renameCode: f.renameCode,
             renamedName: f.renamedName,
             parsedAOA: f.parsedAOA ? f.parsedAOA.slice(0, 50) : null,
@@ -4693,6 +4694,7 @@ async function loadRenameSessionFromStorage() {
                         rowCount: f.rowCount || 0,
                         p2Value: f.p2Value || '',
                         colGValue: f.colGValue || '',
+                        colAValue: f.colAValue || '',
                         renameCode: f.renameCode || '',
                         renamedName: f.renamedName || f.name,
                         parsedAOA: f.parsedAOA || null
@@ -5077,6 +5079,7 @@ async function handleRenFileSelection(files, methodType = 'p2') {
                 methodType: methodType, // 'p2' or 'g'
                 p2Value: "",
                 colGValue: "",
+                colAValue: "",
                 renameCode: "",
                 renamedName: "",
                 parsedAOA: null
@@ -5153,6 +5156,7 @@ async function handleRenFileSelection(files, methodType = 'p2') {
                             rowCount: matchingRows.length,
                             p2Value: p2Val,
                             colGValue: "",
+                            colAValue: "",
                             renameCode: "",
                             renamedName: "",
                             parsedAOA: splitAoa.slice(0, 50)
@@ -5180,6 +5184,7 @@ async function handleRenFileSelection(files, methodType = 'p2') {
                         rowCount: Math.max(0, aoa.length - 1),
                         p2Value: p2Val,
                         colGValue: "",
+                        colAValue: "",
                         renameCode: "",
                         renamedName: "",
                         parsedAOA: aoa ? aoa.slice(0, 50) : null
@@ -5188,15 +5193,25 @@ async function handleRenFileSelection(files, methodType = 'p2') {
             } else {
                 // COLUMN G METHOD (TAX FILES)
                 let colGVal = "";
+                let colAVal = "";
                 for (let r = 1; r < aoa.length; r++) {
                     const row = aoa[r];
-                    if (row && row[6] !== undefined && row[6] !== null) {
-                        const val = String(row[6]).trim();
-                        const lowerVal = val.toLowerCase();
-                        if (val !== "" && lowerVal !== "quantity" && lowerVal !== "description" && lowerVal !== "invoice number" && lowerVal !== "seller sku") {
-                            colGVal = val;
-                            break;
+                    if (row) {
+                        if (!colAVal && row[0] !== undefined && row[0] !== null) {
+                            const val0 = String(row[0]).trim();
+                            const lower0 = val0.toLowerCase();
+                            if (val0 !== "" && !lower0.includes("company name")) {
+                                colAVal = val0;
+                            }
                         }
+                        if (!colGVal && row[6] !== undefined && row[6] !== null) {
+                            const val = String(row[6]).trim();
+                            const lowerVal = val.toLowerCase();
+                            if (val !== "" && lowerVal !== "quantity" && lowerVal !== "description" && lowerVal !== "invoice number" && lowerVal !== "seller sku") {
+                                colGVal = val;
+                            }
+                        }
+                        if (colGVal && colAVal) break;
                     }
                 }
 
@@ -5236,6 +5251,7 @@ async function handleRenFileSelection(files, methodType = 'p2') {
                     rowCount: Math.max(0, aoa.length - 1),
                     p2Value: "",
                     colGValue: colGVal,
+                    colAValue: colAVal,
                     renameCode: "",
                     renamedName: "",
                     parsedAOA: aoa ? aoa.slice(0, 50) : null
@@ -5500,87 +5516,88 @@ function renderStagedRenameFiles() {
 }
 
 // Helper: Extract party code for Option B (Column G / TaxReportData / EE Invoice No files)
-function extractCodeFromColG(colGVal, fileName) {
-    let cleanVal = normalizeMyPartyCode(String(colGVal || "").trim());
-
-    // 1. Check if cleanVal contains a direct match with partyData database codes (e.g. 225, 178, 139, 157, 221, etc.)
-    if (cleanVal !== "" && typeof partyData !== "undefined" && partyData.length > 0) {
-        for (let i = 0; i < partyData.length; i++) {
-            const item = partyData[i];
-            if (!item || !item.code) continue;
-            const codeStr = String(item.code).trim();
-            if (!codeStr) continue;
-
-            const codeRegex = new RegExp(`(?:S|\\b|-|_)${codeStr}(?:-|\\b|_|\\d)`, 'i');
-            if (codeRegex.test(cleanVal) || cleanVal.includes(codeStr)) {
-                return codeStr;
-            }
+function extractCodeFromColG(colGVal, fileName, colAVal = "") {
+    // 1. Check Column A (Company Name, e.g. "198-Gufrina (Admin)")
+    if (colAVal) {
+        const cleanA = String(colAVal).trim();
+        const matchA = cleanA.match(/^(\d{2,5})[-_\s]/);
+        if (matchA) {
+            return matchA[1];
         }
     }
 
-    // 2. Pattern extractions from cleanVal
+    let cleanVal = normalizeMyPartyCode(String(colGVal || "").trim());
+
     if (cleanVal !== "") {
         const uppercaseVal = cleanVal.toUpperCase();
 
-        // Pattern A: MY27S225-183 -> extract "225" (S followed by 2-4 digits before hyphen)
-        const myntraInvoiceMatch = cleanVal.match(/S(\d{2,4})[-_]/i);
+        // Pattern A: Standard Myntra Invoice prefix: MY27S198-1578 -> extract "198" (S followed by 2-5 digits immediately before hyphen/underscore)
+        const myntraInvoiceMatch = cleanVal.match(/S(\d{2,5})[-_]/i);
         if (myntraInvoiceMatch) {
             return myntraInvoiceMatch[1];
         }
 
-        // Pattern B: Digits immediately preceding hyphen e.g. MY27S225-183 -> "225" or 178-INV -> "178"
-        const preHyphenMatch = cleanVal.match(/(\d{2,4})-(?=\d+)/);
+        // Pattern B: Starts with CGJ1 (e.g. CGJ12627-295 or CGJ1-178-INV001 -> extract 2627 or 178)
+        const cgjMatch = cleanVal.match(/CGJ1?-?(\d{2,5})[-_]/i);
+        if (cgjMatch) {
+            return cgjMatch[1];
+        }
+
+        // Pattern C: Digits immediately preceding hyphen followed by digits e.g. 198-1578 or MY27S198-1578 -> "198"
+        const preHyphenMatch = cleanVal.match(/(\d{2,5})-(?=\d+)/);
         if (preHyphenMatch) {
             return preHyphenMatch[1];
         }
 
-        // Pattern C: Starts with CGJ1- (e.g. CGJ1-178-INV001 -> extract "178")
-        if (uppercaseVal.startsWith("CGJ1-")) {
-            const parts = cleanVal.split('-');
-            if (parts.length > 1 && parts[1].trim() !== "") {
-                const secondPart = parts[1].trim();
-                return secondPart.length > 3 ? secondPart.slice(-3) : secondPart;
-            }
-        }
-
-        // Pattern D: Hyphenated value (e.g. 178-INV001 -> extract "178")
+        // Pattern D: Starts with digits followed by hyphen e.g. 178-INV001 -> "178"
         if (cleanVal.includes('-')) {
             const parts = cleanVal.split('-');
             const firstPart = parts[0].trim();
             if (firstPart !== "" && firstPart.toUpperCase() !== "CGJ1") {
-                const numPart = firstPart.match(/\d+/);
+                const numPart = firstPart.match(/\d{2,5}/);
                 if (numPart) {
-                    return numPart[0].length > 3 ? numPart[0].slice(-3) : numPart[0];
+                    return numPart[0];
                 }
-                return firstPart.length > 3 ? firstPart.slice(-3) : firstPart;
-            } else if (parts.length > 1 && parts[1].trim() !== "") {
-                const secondPart = parts[1].trim();
-                const numPart = secondPart.match(/\d+/);
-                if (numPart) {
-                    return numPart[0].length > 3 ? numPart[0].slice(-3) : numPart[0];
-                }
-                return secondPart.length > 3 ? secondPart.slice(-3) : secondPart;
             }
         }
 
-        // Pattern E: Match numeric sequence of 2-4 digits
-        const numMatch = cleanVal.match(/\b\d{2,4}\b/);
+        // Pattern E: Match against partyData database codes strictly on prefix before hyphen
+        if (typeof partyData !== "undefined" && partyData.length > 0) {
+            const prefixPart = cleanVal.includes('-') ? cleanVal.split('-')[0] : cleanVal;
+            for (let i = 0; i < partyData.length; i++) {
+                const item = partyData[i];
+                if (!item || !item.code) continue;
+                const codeStr = String(item.code).trim();
+                if (!codeStr) continue;
+
+                const codeRegex = new RegExp(`(?:^|S|\\b|-|_)${codeStr}(?:-|\\b|_|$)(?!\\d)`, 'i');
+                if (codeRegex.test(prefixPart)) {
+                    return codeStr;
+                }
+            }
+        }
+
+        // Pattern F: Match numeric sequence of 2-5 digits
+        const numMatch = cleanVal.match(/\b\d{2,5}\b/);
         if (numMatch) {
             return numMatch[0];
         }
-
-        // Fallback: Right 3 characters
-        return cleanVal.length >= 3 ? cleanVal.slice(-3) : cleanVal;
     }
 
-    // 3. Fallback: Search filename for partyData database code
-    if (fileName && typeof partyData !== "undefined" && partyData.length > 0) {
-        for (let i = 0; i < partyData.length; i++) {
-            const item = partyData[i];
-            if (!item || !item.code) continue;
-            const codeStr = String(item.code).trim();
-            if (codeStr && fileName.includes(codeStr)) {
-                return codeStr;
+    // 2. Fallback: Search filename starting digits
+    if (fileName) {
+        let fName = normalizeMyPartyCode(String(fileName).trim());
+        const match = fName.match(/^\d{2,5}/);
+        if (match) return match[0];
+
+        if (typeof partyData !== "undefined" && partyData.length > 0) {
+            for (let i = 0; i < partyData.length; i++) {
+                const item = partyData[i];
+                if (!item || !item.code) continue;
+                const codeStr = String(item.code).trim();
+                if (codeStr && new RegExp(`(?:^|\\b|-|_)${codeStr}(?:-|\\b|_|$)`, 'i').test(fileName)) {
+                    return codeStr;
+                }
             }
         }
     }
@@ -5674,7 +5691,7 @@ function calculateRenameResults() {
                 }
             } else {
                 // OPTION B: Column G cell extraction (with smart CGJ1- & Party Database matching)
-                const extractedCode = extractCodeFromColG(fileObj.colGValue, fileObj.name);
+                const extractedCode = extractCodeFromColG(fileObj.colGValue, fileObj.name, fileObj.colAValue);
                 if (extractedCode !== "") {
                     renameCode = extractedCode;
                 } else {
