@@ -88,15 +88,15 @@
                         <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
                             <div>
                                 <h2>Upload Files</h2>
-                                <span class="info-tag" id="proc-rule-tag">Old: 3 Files</span>
+                                <span class="info-tag" id="proc-rule-tag">New: 2 Files</span>
                             </div>
                             <div style="display: flex; align-items: center; gap: 0.45rem;">
-                                <label class="sep-rule-toggle is-old" id="proc-rule-container" title="Rule: ON = New (2 Files), OFF = Old (3 Files)">
+                                <label class="sep-rule-toggle" id="proc-rule-container" title="Rule: ON = New (2 Files), OFF = Old (3 Files)">
                                     <span class="sep-rule-switch">
-                                        <input type="checkbox" id="toggle-proc-rule" autocomplete="off">
+                                        <input type="checkbox" id="toggle-proc-rule" checked autocomplete="off">
                                         <span class="sep-rule-slider"></span>
                                     </span>
-                                    <span class="sep-rule-text" id="label-proc-rule">Old (3 Files)</span>
+                                    <span class="sep-rule-text" id="label-proc-rule">New (2 Files)</span>
                                 </label>
                                 <button class="btn-reset-tab" id="btn-reset-processor" title="Clean & Reset Tab">
                                     <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
@@ -360,6 +360,10 @@
                                     <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
                                     Process & Rename Files
                                 </button>
+                                <button class="btn btn-primary btn-glow hidden" id="btn-header-download-zip" style="padding: 0.35rem 0.85rem; font-size: 0.78rem;">
+                                    <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                                    Download Renamed ZIP
+                                </button>
                                 <div class="search-box">
                                     <input type="text" id="search-input" placeholder="Search files...">
                                 </div>
@@ -417,15 +421,15 @@
                         <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
                             <div>
                                 <h2 id="fld-upload-title">Upload Files to Group</h2>
-                                <span class="info-tag" id="fld-rule-tag">Old: 3 Files / Folder</span>
+                                <span class="info-tag" id="fld-rule-tag">New: 2 Files / Folder</span>
                             </div>
                             <div style="display: flex; align-items: center; gap: 0.45rem;">
-                                <label class="sep-rule-toggle is-old" id="fld-rule-container" title="Rule: ON = New (2 Files / Folder), OFF = Old (3 Files / Folder)">
+                                <label class="sep-rule-toggle" id="fld-rule-container" title="Rule: ON = New (2 Files / Folder), OFF = Old (3 Files / Folder)">
                                     <span class="sep-rule-switch">
-                                        <input type="checkbox" id="toggle-fld-rule" autocomplete="off">
+                                        <input type="checkbox" id="toggle-fld-rule" checked autocomplete="off">
                                         <span class="sep-rule-slider"></span>
                                     </span>
-                                    <span class="sep-rule-text" id="label-fld-rule">Old (3 Files)</span>
+                                    <span class="sep-rule-text" id="label-fld-rule">New (2 Files)</span>
                                 </label>
                                 <button class="btn-reset-tab" id="btn-reset-folder-create" title="Clean & Reset Tab">
                                     <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
@@ -650,14 +654,14 @@
                             <!-- 1. SIMPLE (Column D / Column G) -->
                             <div>
                                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.3rem; gap: 0.4rem;">
-                                    <span style="font-size: 0.75rem; font-weight: 700; color: var(--primary);" id="sep-title-simple">📦 1. SIMPLE (Column G)</span>
+                                    <span style="font-size: 0.75rem; font-weight: 700; color: var(--primary);" id="sep-title-simple">📦 1. SIMPLE (Column D)</span>
                                     <div style="display: flex; align-items: center; gap: 0.35rem;">
-                                        <label class="sep-rule-toggle is-old" id="sep-rule-container" title="Rule: ON = New (Column D), OFF = Old (Column G)">
+                                        <label class="sep-rule-toggle" id="sep-rule-container" title="Rule: ON = New (Column D), OFF = Old (Column G)">
                                             <span class="sep-rule-switch">
-                                                <input type="checkbox" id="toggle-simple-rule" autocomplete="off">
+                                                <input type="checkbox" id="toggle-simple-rule" checked autocomplete="off">
                                                 <span class="sep-rule-slider"></span>
                                             </span>
-                                            <span class="sep-rule-text" id="label-simple-rule">Old</span>
+                                            <span class="sep-rule-text" id="label-simple-rule">New</span>
                                         </label>
                                         <span class="badge badge-od" id="sep-badge-simple" style="font-size: 0.65rem;">0 unique</span>
                                     </div>
@@ -1199,20 +1203,20 @@
                                     <span class="badge hidden" id="tax-unmatched-badge" style="background: rgba(220,38,38,0.12); color: #dc2626; border: 1px solid rgba(220,38,38,0.25); font-size: 0.65rem;">0 Need Prefix</span>
                                 </div>
                                 <div style="display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;">
-                                    <label class="sep-rule-toggle is-old" id="ren-g-move-container" title="Target: ON = Move to Merge, OFF = Move to Folder Create" style="margin-right: 0.15rem;">
+                                    <label class="sep-rule-toggle" id="ren-g-move-container" title="Target: ON = Move to Merge, OFF = Move to Folder Create" style="margin-right: 0.15rem;">
                                         <span class="sep-rule-switch">
-                                            <input type="checkbox" id="toggle-ren-g-move" autocomplete="off">
+                                            <input type="checkbox" id="toggle-ren-g-move" checked autocomplete="off">
                                             <span class="sep-rule-slider"></span>
                                         </span>
-                                        <span class="sep-rule-text" id="label-ren-g-move">Move: Folder</span>
+                                        <span class="sep-rule-text" id="label-ren-g-move">Move: Merge</span>
                                     </label>
                                     <button class="btn btn-secondary" id="btn-tax-fullview" style="padding: 0.28rem 0.6rem; font-size: 0.72rem;" title="Full View Modal">
                                         <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"></path><path d="M9 21H3v-6"></path><path d="M21 3l-7 7"></path><path d="M3 21l7-7"></path></svg>
                                         Full View
                                     </button>
-                                    <button class="btn btn-secondary" id="btn-move-to-folder-create" style="padding: 0.28rem 0.65rem; font-size: 0.72rem; color: #059669; font-weight: 700; border-color: rgba(5, 150, 105, 0.25);" title="Transfer files directly to Folder Create tab">
-                                        <svg id="ren-tax-move-icon" viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
-                                        <span id="ren-tax-move-text">Move to Folder Create</span>
+                                    <button class="btn btn-secondary" id="btn-move-to-folder-create" style="padding: 0.28rem 0.65rem; font-size: 0.72rem; color: var(--primary); font-weight: 700; border-color: rgba(124, 58, 237, 0.25);" title="Transfer Tax files directly to Merge File tab">
+                                        <svg id="ren-tax-move-icon" viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"></polyline><line x1="4" y1="20" x2="21" y2="3"></line><polyline points="21 16 21 21 16 21"></polyline><line x1="15" y1="15" x2="21" y2="21"></line><line x1="4" y1="4" x2="9" y2="9"></line></svg>
+                                        <span id="ren-tax-move-text">Move to Merge</span>
                                     </button>
                                     <button class="btn btn-primary" id="btn-download-tax-zip" style="padding: 0.28rem 0.65rem; font-size: 0.72rem; background: #059669; border-color: #059669;" title="Download only Tax files ZIP">
                                         <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>

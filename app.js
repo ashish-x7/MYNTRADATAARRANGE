@@ -32,6 +32,7 @@ const filesTbody = document.getElementById('files-tbody');
 const searchInput = document.getElementById('search-input');
 const btnClear = document.getElementById('btn-clear');
 const btnDownloadZip = document.getElementById('btn-download-zip');
+const btnHeaderDownloadZip = document.getElementById('btn-header-download-zip');
 const btnProcessAction = document.getElementById('btn-process-action');
 const dashboardControls = document.getElementById('dashboard-controls');
 const toggleStructure = document.getElementById('toggle-structure');
@@ -120,21 +121,21 @@ document.addEventListener('DOMContentLoaded', () => {
     setupErrorTracker();
     setupCleanAndResetButtons();
 
-    // Enforce default OFF across all tabs
+    // Enforce default ON across all tabs
     const tSimple = document.getElementById('toggle-simple-rule');
-    if (tSimple) { tSimple.checked = false; }
+    if (tSimple) { tSimple.checked = true; }
     updateSimpleRuleUI();
 
     const tFld = document.getElementById('toggle-fld-rule');
-    if (tFld) { tFld.checked = false; }
+    if (tFld) { tFld.checked = true; }
     updateFldRuleUI();
 
     const tRen = document.getElementById('toggle-ren-g-move');
-    if (tRen) { tRen.checked = false; }
+    if (tRen) { tRen.checked = true; }
     updateRenGMoveUI();
 
     const tProc = document.getElementById('toggle-proc-rule');
-    if (tProc) { tProc.checked = false; }
+    if (tProc) { tProc.checked = true; }
     updateProcRuleUI();
 });
 
@@ -272,7 +273,8 @@ function setupEventHandlers() {
     btnClear.addEventListener('click', resetState);
 
     // Download Zip
-    btnDownloadZip.addEventListener('click', downloadAllAsZip);
+    if (btnDownloadZip) btnDownloadZip.addEventListener('click', downloadAllAsZip);
+    if (btnHeaderDownloadZip) btnHeaderDownloadZip.addEventListener('click', downloadAllAsZip);
 
     // Tab switcher handlers
     const tabButtons = document.querySelectorAll('.tab-btn[data-tab]');
@@ -331,7 +333,7 @@ function setupEventHandlers() {
     // Processor Rule Toggle (ON = New [2 Files], OFF = Old [3 Files])
     const toggleProcRule = document.getElementById('toggle-proc-rule');
     if (toggleProcRule) {
-        toggleProcRule.checked = false;
+        toggleProcRule.checked = true;
         toggleProcRule.addEventListener('change', () => {
             updateProcRuleUI();
         });
@@ -481,6 +483,8 @@ function resetState() {
     tableContainer.classList.add('hidden');
     dashboardControls.classList.add('hidden');
     btnProcessAction.classList.add('hidden');
+    if (btnDownloadZip) btnDownloadZip.classList.add('hidden');
+    if (btnHeaderDownloadZip) btnHeaderDownloadZip.classList.add('hidden');
     mappingCard.classList.add('hidden');
     
     rangeValue.textContent = "—";
@@ -546,8 +550,18 @@ async function handleUploadedFiles(files) {
             
             // Show the Process action button and mapping selectors
             btnProcessAction.classList.remove('hidden');
+            if (btnDownloadZip) btnDownloadZip.classList.add('hidden');
+            if (btnHeaderDownloadZip) btnHeaderDownloadZip.classList.add('hidden');
             mappingCard.classList.remove('hidden');
             dashboardControls.classList.add('hidden');
+            
+            // Auto-switch to New (2 Files) mode if 2 files per party (or 2 files total) are detected
+            const uniqueCodes = getUniquePartyCodes();
+            const toggleProcRule = document.getElementById('toggle-proc-rule');
+            if (toggleProcRule && ((uniqueCodes.length <= 1 && filesList.length === 2) || (uniqueCodes.length > 1 && filesList.length === uniqueCodes.length * 2))) {
+                toggleProcRule.checked = true;
+                updateProcRuleUI();
+            }
             
             populateSelectors();
             renderFilesTable();
@@ -657,7 +671,9 @@ function createFileObject(name, path, ext, fileBlob) {
         path: path,
         ext: ext,
         originalFile: fileBlob,
+        _rawOriginalFile: fileBlob,
         category: category,
+        _origCategory: category,
         renamedName: renamedName
     };
 }
@@ -718,8 +734,15 @@ function populateSelectors() {
     
     // Auto-assignment
     if (isNew) {
-        const dropShipFile = filesList.find(f => f.category === 'OD' || f.name.toLowerCase().includes('dropship') || f.name.toLowerCase().includes('seller_orders_report'));
-        const indoPrimoFile = filesList.find(f => f.name.toLowerCase().includes('indoprimo') || f.name.toLowerCase().includes('itemdetails') || f.name.toLowerCase().includes('sale') || f.name.toLowerCase().includes('saledata') || (f !== dropShipFile && f.category !== 'OD'));
+        let dropShipFile = filesList.find(f => f.category === 'OD' || f.name.toLowerCase().includes('dropship') || f.name.toLowerCase().includes('seller_orders_report') || f.name.toLowerCase().includes('order'));
+        let indoPrimoFile = filesList.find(f => f !== dropShipFile && (f.name.toLowerCase().includes('indoprimo') || f.name.toLowerCase().includes('itemdetails') || f.name.toLowerCase().includes('sale') || f.name.toLowerCase().includes('saledata') || f.category !== 'OD'));
+        
+        if (!dropShipFile && filesList.length === 2) {
+            dropShipFile = filesList[0];
+            indoPrimoFile = filesList[1];
+        } else if (dropShipFile && !indoPrimoFile && filesList.length === 2) {
+            indoPrimoFile = filesList.find(f => f !== dropShipFile);
+        }
         
         if (dropShipFile) selectOdFile.value = dropShipFile.id;
         if (indoPrimoFile) selectDtFile.value = indoPrimoFile.id;
@@ -756,6 +779,10 @@ function readExcelAsAOA(fileBlob, preferredSheetName = null) {
                 }
                 const worksheet = workbook.Sheets[sheetName];
                 const aoa = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" });
+                // Strip trailing empty rows from sheet
+                while (aoa.length > 0 && !isValidOrderRow(aoa[aoa.length - 1])) {
+                    aoa.pop();
+                }
                 resolve(aoa);
             } catch (err) {
                 reject(err);
@@ -825,10 +852,32 @@ function parseFormattedDate(dateStr) {
     return isNaN(d.getTime()) ? null : d;
 }
 
-// Clean non-printable characters (ASCII < 32) and trim
+// Clean non-printable characters (ASCII < 32, NBSP, zero-width) and trim
 function cleanCell(val) {
     if (val === undefined || val === null) return "";
-    return String(val).replace(/[\x00-\x1F\x7F-\x9F]/g, "").trim();
+    return String(val).replace(/[\x00-\x1F\x7F-\x9F\u00A0\u200B-\u200D\uFEFF]/g, "").trim();
+}
+
+// Helper to determine if a data row is valid (not a blank row or ghost row with hidden characters)
+function isValidOrderRow(row) {
+    if (!row || !Array.isArray(row) || row.length === 0) return false;
+    
+    // Check if any critical order column has data:
+    const hasKeyData = (row[4] !== undefined && cleanCell(row[4]) !== "") ||
+                       (row[6] !== undefined && cleanCell(row[6]) !== "") ||
+                       (row[3] !== undefined && cleanCell(row[3]) !== "") ||
+                       (row[0] !== undefined && cleanCell(row[0]) !== "") ||
+                       (row[1] !== undefined && cleanCell(row[1]) !== "") ||
+                       (row[2] !== undefined && cleanCell(row[2]) !== "") ||
+                       (row[15] !== undefined && cleanCell(row[15]) !== "") ||
+                       (row[16] !== undefined && cleanCell(row[16]) !== "");
+    if (hasKeyData) return true;
+    
+    // Check if ANY cell in the entire row has non-empty cleaned data
+    for (let c = 0; c < row.length; c++) {
+        if (cleanCell(row[c]) !== "") return true;
+    }
+    return false;
 }
 
 // Custom Key Cleaning mapping function (VBA CleanKey Translation)
@@ -995,7 +1044,21 @@ function getPartyCodeName(partyCode) {
         }
     }
 
-    // 5. Fallback: If codeClean already contains letters, return it; otherwise return codeClean
+    // 5. Known parties dictionary fallback
+    const defaultKnownParties = {
+        "101": "101-BHARVITA",
+        "509": "509-VIVATRA",
+        "128": "128-BAGHADELLO",
+        "200": "200-FOCUS STYLE",
+        "178": "178-COLORBOOK",
+        "150": "150-ZOMBOM",
+        "544": "544-HOUSE OF PRANSHI",
+        "198": "198-GUFRINA",
+        "139": "139-INDO PRIMO"
+    };
+    if (defaultKnownParties[codeClean]) return defaultKnownParties[codeClean];
+
+    // 6. Fallback: If codeClean already contains letters, return it; otherwise return codeClean
     if (/[a-zA-Z]/.test(codeClean)) {
         return codeClean;
     }
@@ -1052,6 +1115,7 @@ async function processPartyPipeline(odFileObj, dtFileObj, summaryFileObj, partyC
     let odDeletedCount = 0;
     for (let r = 1; r < processedOdRows.length; r++) {
         const row = processedOdRows[r];
+        if (!row || !isValidOrderRow(row)) continue;
         const key = cleanCell(row[7]).toLowerCase();
         
         if (summarySet.has(key)) {
@@ -1622,8 +1686,8 @@ async function processPartyPipeline(odFileObj, dtFileObj, summaryFileObj, partyC
         ]);
         
         const summaryWB = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(summaryWB, summaryWS1, "Party Details");
-        XLSX.utils.book_append_sheet(summaryWB, summaryWS2, "Log Details");
+        XLSX.utils.book_append_sheet(summaryWB, summaryWS1, "Invoice Summary");
+        XLSX.utils.book_append_sheet(summaryWB, summaryWS2, "Invoice Details");
         
         const summaryArrayBuffer = XLSX.write(summaryWB, { bookType: 'xlsx', type: 'array' });
         const summaryBlob = new Blob([summaryArrayBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
@@ -1766,6 +1830,9 @@ async function processPartyPipelineNew2Files(dropShipFileObj, indoPrimoFileObj, 
             const rawCombined = bVal + gVal;
             indoKeySet.add(cleanKey(rawCombined));
             indoKeySetStrict.add(rawCombined.toLowerCase().replace(/[\s\-_]/g, ''));
+            const revCombined = gVal + bVal;
+            indoKeySet.add(cleanKey(revCombined));
+            indoKeySetStrict.add(revCombined.toLowerCase().replace(/[\s\-_]/g, ''));
         }
     }
     
@@ -1773,12 +1840,15 @@ async function processPartyPipelineNew2Files(dropShipFileObj, indoPrimoFileObj, 
     if (indoPrimoRows.length > 1) {
         const r1 = indoPrimoRows[1];
         const b1 = cleanCell(r1[1]);
-        const g1 = cleanCell(r1[6]);
+        const g1 = cleanCell(r1[6]).replace(/\.0+$/, '').replace(/^[`']/, '').trim();
         const isHeader = /order|item|sku|invoice|code|id|date/i.test(b1 + g1);
         if (!isHeader && b1 && g1) {
             const rawCombined = b1 + g1;
             indoKeySet.add(cleanKey(rawCombined));
             indoKeySetStrict.add(rawCombined.toLowerCase().replace(/[\s\-_]/g, ''));
+            const revCombined = g1 + b1;
+            indoKeySet.add(cleanKey(revCombined));
+            indoKeySetStrict.add(revCombined.toLowerCase().replace(/[\s\-_]/g, ''));
         }
     }
     addLog(`[${partyCode}] IndoPrimo Dictionary loaded with ${indoKeySet.size} unique keys.`, "success");
@@ -1786,7 +1856,7 @@ async function processPartyPipelineNew2Files(dropShipFileObj, indoPrimoFileObj, 
     // Step 3: Filter DropShip File: Delete matched rows where =G2&E2 is in IndoPrimo Set
     addLog(`[${partyCode}] Filtering DropShip File: Deleting matching invoiced rows against IndoPrimo keys...`, "info");
     const headerRow = dropShipRows[0] || [];
-    const cleanDropShipRows = [headerRow]; // retain header
+    let cleanDropShipRows = [headerRow]; // retain header
     let deletedCount = 0;
     
     // Dynamic header lookup in DropShip file
@@ -1814,20 +1884,24 @@ async function processPartyPipelineNew2Files(dropShipFileObj, indoPrimoFileObj, 
     
     for (let r = 1; r < dropShipRows.length; r++) {
         const row = dropShipRows[r];
-        if (!row) continue;
+        if (!row || !isValidOrderRow(row)) continue;
         
         // Key = G2 & E2 (Col G is index 6, Col E is index 4)
         const gVal = cleanCell(row[6]).replace(/\.0+$/, '').replace(/^[`']/, '').trim();
         const eVal = cleanCell(row[4]).replace(/\.0+$/, '').replace(/^[`']/, '').trim();
-        const dropShipKey = cleanKey(gVal + eVal);
-        const dropShipKeyStrict = (gVal + eVal).toLowerCase().replace(/[\s\-_]/g, '');
+        const dropShipKey1 = cleanKey(gVal + eVal);
+        const dropShipKey1Strict = (gVal + eVal).toLowerCase().replace(/[\s\-_]/g, '');
+        const dropShipKey2 = cleanKey(eVal + gVal);
+        const dropShipKey2Strict = (eVal + gVal).toLowerCase().replace(/[\s\-_]/g, '');
         
         // Also check if Col DW (index 126) has precalculated key
         const dwKey = cleanKey(cleanCell(row[126])).replace(/\.0+$/, '').replace(/^[`']/, '').trim();
         const dwKeyStrict = cleanCell(row[126]).replace(/\.0+$/, '').replace(/^[`']/, '').trim().toLowerCase().replace(/[\s\-_]/g, '');
         
-        const isMatched = (dropShipKey !== "" && indoKeySet.has(dropShipKey)) ||
-                          (dropShipKeyStrict !== "" && indoKeySetStrict.has(dropShipKeyStrict)) ||
+        const isMatched = (dropShipKey1 !== "" && indoKeySet.has(dropShipKey1)) ||
+                          (dropShipKey1Strict !== "" && indoKeySetStrict.has(dropShipKey1Strict)) ||
+                          (dropShipKey2 !== "" && indoKeySet.has(dropShipKey2)) ||
+                          (dropShipKey2Strict !== "" && indoKeySetStrict.has(dropShipKey2Strict)) ||
                           (dwKey !== "" && indoKeySet.has(dwKey)) ||
                           (dwKeyStrict !== "" && indoKeySetStrict.has(dwKeyStrict));
                           
@@ -1842,7 +1916,13 @@ async function processPartyPipelineNew2Files(dropShipFileObj, indoPrimoFileObj, 
             if (clonedRow[12] !== undefined && clonedRow[12] !== "") {
                 clonedRow[12] = formatDate(clonedRow[12]);
             }
-            cleanDropShipRows.push(clonedRow);
+            // Trim trailing empty cells so row doesn't store ghost whitespace
+            while (clonedRow.length > 0 && (clonedRow[clonedRow.length - 1] === undefined || clonedRow[clonedRow.length - 1] === null || cleanCell(clonedRow[clonedRow.length - 1]) === "")) {
+                clonedRow.pop();
+            }
+            if (isValidOrderRow(clonedRow)) {
+                cleanDropShipRows.push(clonedRow);
+            }
         }
     }
     addLog(`[${partyCode}] DropShip Filtering Done: Deleted ${deletedCount} invoiced rows. Remaining: ${cleanDropShipRows.length - 1} clean rows.`, "success");
@@ -2037,10 +2117,11 @@ async function processPartyPipelineNew2Files(dropShipFileObj, indoPrimoFileObj, 
     
     for (let r = 1; r < cleanDropShipRows.length; r++) {
         const row = cleanDropShipRows[r];
+        if (!row || !isValidOrderRow(row)) continue;
         const newRow = new Array(18).fill("");
         
         newRow[0] = cleanCell(row[4]).replace(/^[`']/, '').trim(); // Order ID (Col E, index 4)
-        newRow[1] = cleanCell(row[3]); // Invoice ID (Col D, index 3 - Reference Code)
+        newRow[1] = cleanCell(row[7]); // Invoice ID (Col H, index 7)
         newRow[2] = cleanCell(row[6]); // New Invoice ID (Col G, index 6 - EE Invoice No)
         newRow[3] = "";                // IRN blank
         newRow[4] = formatDate(row[11]); // Shipment date (Col L, index 11)
@@ -2119,6 +2200,10 @@ async function processPartyPipelineNew2Files(dropShipFileObj, indoPrimoFileObj, 
     // Step 10: Compile Workbooks & Blobs
     addLog(`[${partyCode}] Compiling Excel workbooks...`, "info");
     
+    // Filter cleanDropShipRows and combinedRows to ensure absolutely zero blank or ghost rows
+    cleanDropShipRows = cleanDropShipRows.filter((r, idx) => idx === 0 || isValidOrderRow(r));
+    const finalCleanOdRows = combinedRows.filter((r, idx) => idx === 0 || isValidOrderRow(r));
+    
     // 1. Clean DT File (compiled from cleanDropShipRows)
     const dtWS = XLSX.utils.aoa_to_sheet(cleanDropShipRows);
     const dtWB = XLSX.utils.book_new();
@@ -2134,7 +2219,7 @@ async function processPartyPipelineNew2Files(dropShipFileObj, indoPrimoFileObj, 
     const dtBlob = new Blob([dtArrayBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     
     // 2. Master Combined (OD) File
-    const odWS = XLSX.utils.aoa_to_sheet(combinedRows);
+    const odWS = XLSX.utils.aoa_to_sheet(finalCleanOdRows);
     const odWB = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(odWB, odWS, "Combined Master");
     const odArrayBuffer = XLSX.write(odWB, { bookType: 'xlsx', type: 'array' });
@@ -2155,18 +2240,23 @@ async function processPartyPipelineNew2Files(dropShipFileObj, indoPrimoFileObj, 
         indoPrimoFileObj.category = "IndoPrimo";
     }
     
+    const odPath = (dropShipFileObj.path && (dropShipFileObj.path.includes('/') || dropShipFileObj.path.includes('\\')))
+        ? dropShipFileObj.path.replace(/[^\/\\]+$/, finalOdFileName)
+        : finalOdFileName;
+        
     // Push the OD File (Combined) into filesList
     filesList.push({
         id: nextId++,
         name: finalOdFileName,
-        path: finalOdFileName,
+        path: odPath,
         ext: "xlsx",
         originalFile: odBlob,
         category: "OD",
         renamedName: finalOdFileName,
         partyCode: partyCode,
         partyRange: generatedRange,
-        parsedAOA: combinedRows
+        parsedAOA: finalCleanOdRows,
+        _isGenerated: true
     });
     
     // Save GST Not Applicable if rows exist
@@ -2237,8 +2327,8 @@ async function processPartyPipelineNew2Files(dropShipFileObj, indoPrimoFileObj, 
         ];
         const summaryWS2 = XLSX.utils.aoa_to_sheet(summaryRows2);
         const sumWB = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(sumWB, summaryWS1, "Range");
-        XLSX.utils.book_append_sheet(sumWB, summaryWS2, "Summary Log");
+        XLSX.utils.book_append_sheet(sumWB, summaryWS1, "Invoice Summary");
+        XLSX.utils.book_append_sheet(sumWB, summaryWS2, "Invoice Details");
         const sumBuffer = XLSX.write(sumWB, { bookType: 'xlsx', type: 'array' });
         const sumBlob = new Blob([sumBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
         const sumFileName = `${partyCode}-SUMMARY.xlsx`;
@@ -2284,7 +2374,21 @@ async function processUploadedFiles() {
         }
     }
     
-    const isNewPipeline = document.getElementById('toggle-proc-rule')?.checked;
+    let isNewPipeline = document.getElementById('toggle-proc-rule')?.checked;
+    // Smart auto-detection: if 2 files loaded (or 2 files per party), auto-switch to New (2-File) Pipeline
+    if (!isNewPipeline) {
+        const isTwoFilesPattern = (uniqueCodes.length <= 1 && filesList.length === 2) ||
+                                  (uniqueCodes.length > 1 && filesList.length === uniqueCodes.length * 2);
+        if (isTwoFilesPattern) {
+            isNewPipeline = true;
+            const toggleProcRule = document.getElementById('toggle-proc-rule');
+            if (toggleProcRule) {
+                toggleProcRule.checked = true;
+                updateProcRuleUI();
+            }
+        }
+    }
+
     showLoading(isNewPipeline ? "Running New (2-File) Excel Pipeline..." : "Running Excel Pipeline...", 2);
     clearLogs();
     await new Promise(r => setTimeout(r, 50)); // Allow UI to update
@@ -2307,14 +2411,18 @@ async function processUploadedFiles() {
                     indoPrimoFileObj = filesList.find(f => f.id === indoPrimoId);
                 } else {
                     const groupFiles = filesList.filter(f => getPartyCode(f) === partyCode);
-                    dropShipFileObj = groupFiles.find(f => f.category === 'OD' || f.name.toLowerCase().includes('dropship') || f.name.toLowerCase().includes('seller_orders_report'));
-                    indoPrimoFileObj = groupFiles.find(f => f.name.toLowerCase().includes('indoprimo') || f.name.toLowerCase().includes('itemdetails') || f.name.toLowerCase().includes('sale') || f.name.toLowerCase().includes('saledata') || (f !== dropShipFileObj && f.category !== 'OD'));
+                    dropShipFileObj = groupFiles.find(f => f.category === 'OD' || f.name.toLowerCase().includes('dropship') || f.name.toLowerCase().includes('seller_orders_report') || f.name.toLowerCase().includes('order'));
+                    indoPrimoFileObj = groupFiles.find(f => f !== dropShipFileObj && (f.name.toLowerCase().includes('indoprimo') || f.name.toLowerCase().includes('itemdetails') || f.name.toLowerCase().includes('sale') || f.name.toLowerCase().includes('saledata') || f.category !== 'OD'));
                     
                     if (!dropShipFileObj) {
-                        dropShipFileObj = filesList.find(f => f.category === 'OD' || f.name.toLowerCase().includes('dropship') || f.name.toLowerCase().includes('seller_orders_report'));
+                        dropShipFileObj = filesList.find(f => f.category === 'OD' || f.name.toLowerCase().includes('dropship') || f.name.toLowerCase().includes('seller_orders_report') || f.name.toLowerCase().includes('order'));
                     }
                     if (!indoPrimoFileObj) {
                         indoPrimoFileObj = filesList.find(f => f !== dropShipFileObj);
+                    }
+                    if (!dropShipFileObj && filesList.length === 2) {
+                        dropShipFileObj = filesList[0];
+                        indoPrimoFileObj = filesList[1];
                     }
                 }
                 
@@ -2328,8 +2436,10 @@ async function processUploadedFiles() {
                 }
                 
                 // Clean up previous run dynamic files
-                filesList = filesList.filter(f => 
+                filesList = filesList.filter(f => !f._isGenerated && 
                     f.category !== "Combined" && 
+                    !f.name.endsWith("-OD.xlsx") &&
+                    !f.name.endsWith("-DT.xlsx") &&
                     f.name !== "PARTLY CANCEL ORDER.xlsx" && 
                     f.name !== "GST NOT APPLICABLE.xlsx" && 
                     f.name !== "2 MORE INVOICE.xlsx" && 
@@ -2340,6 +2450,10 @@ async function processUploadedFiles() {
                     !f.name.endsWith("-2 MORE INVOICE.xlsx") &&
                     !f.name.endsWith("-SUMMARY.xlsx")
                 );
+                filesList.forEach(f => {
+                    if (f._rawOriginalFile) f.originalFile = f._rawOriginalFile;
+                    if (f._origCategory) f.category = f._origCategory;
+                });
                 
                 updateProgress(10, "Loading DropShip and IndoPrimo sheet data...");
                 await new Promise(r => setTimeout(r, 30));
@@ -2378,8 +2492,10 @@ async function processUploadedFiles() {
                 addLog(`Batch Mode Active (2-File): Processing ${uniqueCodes.length} parties.`, "warning");
                 
                 // Clean up previous run dynamic files
-                filesList = filesList.filter(f => 
+                filesList = filesList.filter(f => !f._isGenerated && 
                     f.category !== "Combined" && 
+                    !f.name.endsWith("-OD.xlsx") &&
+                    !f.name.endsWith("-DT.xlsx") &&
                     f.name !== "PARTLY CANCEL ORDER.xlsx" && 
                     f.name !== "GST NOT APPLICABLE.xlsx" && 
                     f.name !== "2 MORE INVOICE.xlsx" && 
@@ -2390,6 +2506,10 @@ async function processUploadedFiles() {
                     !f.name.endsWith("-2 MORE INVOICE.xlsx") &&
                     !f.name.endsWith("-SUMMARY.xlsx")
                 );
+                filesList.forEach(f => {
+                    if (f._rawOriginalFile) f.originalFile = f._rawOriginalFile;
+                    if (f._origCategory) f.category = f._origCategory;
+                });
                 
                 let successCount = 0;
                 const allCancelledInvoices = [];
@@ -2404,8 +2524,15 @@ async function processUploadedFiles() {
                     await new Promise(r => setTimeout(r, 30));
                     
                     const groupFiles = filesList.filter(f => getPartyCode(f) === partyCode);
-                    const dropShipFile = groupFiles.find(f => f.category === 'OD' || f.name.toLowerCase().includes('dropship') || f.name.toLowerCase().includes('seller_orders_report'));
-                    const indoPrimoFile = groupFiles.find(f => f.name.toLowerCase().includes('indoprimo') || f.name.toLowerCase().includes('itemdetails') || f.name.toLowerCase().includes('sale') || f.name.toLowerCase().includes('saledata') || (f !== dropShipFile && f.category !== 'OD'));
+                    let dropShipFile = groupFiles.find(f => f.category === 'OD' || f.name.toLowerCase().includes('dropship') || f.name.toLowerCase().includes('seller_orders_report') || f.name.toLowerCase().includes('order'));
+                    let indoPrimoFile = groupFiles.find(f => f !== dropShipFile && (f.name.toLowerCase().includes('indoprimo') || f.name.toLowerCase().includes('itemdetails') || f.name.toLowerCase().includes('sale') || f.name.toLowerCase().includes('saledata') || f.category !== 'OD'));
+                    
+                    if (!dropShipFile && groupFiles.length === 2) {
+                        dropShipFile = groupFiles[0];
+                        indoPrimoFile = groupFiles[1];
+                    } else if (dropShipFile && !indoPrimoFile && groupFiles.length === 2) {
+                        indoPrimoFile = groupFiles.find(f => f !== dropShipFile);
+                    }
                     
                     if (dropShipFile && indoPrimoFile) {
                         try {
@@ -2443,8 +2570,8 @@ async function processUploadedFiles() {
                     const summaryWS2 = XLSX.utils.aoa_to_sheet(ws2Rows);
                     
                     const summaryWB = XLSX.utils.book_new();
-                    XLSX.utils.book_append_sheet(summaryWB, summaryWS1, "Party Details");
-                    XLSX.utils.book_append_sheet(summaryWB, summaryWS2, "Log Details");
+                    XLSX.utils.book_append_sheet(summaryWB, summaryWS1, "Invoice Summary");
+                    XLSX.utils.book_append_sheet(summaryWB, summaryWS2, "Invoice Details");
                     
                     const summaryArrayBuffer = XLSX.write(summaryWB, { bookType: 'xlsx', type: 'array' });
                     const summaryBlob = new Blob([summaryArrayBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
@@ -2681,8 +2808,8 @@ async function processUploadedFiles() {
                 const summaryWS2 = XLSX.utils.aoa_to_sheet(ws2Rows);
                 
                 const summaryWB = XLSX.utils.book_new();
-                XLSX.utils.book_append_sheet(summaryWB, summaryWS1, "Party Details");
-                XLSX.utils.book_append_sheet(summaryWB, summaryWS2, "Log Details");
+                XLSX.utils.book_append_sheet(summaryWB, summaryWS1, "Invoice Summary");
+                XLSX.utils.book_append_sheet(summaryWB, summaryWS2, "Invoice Details");
                 
                 const summaryArrayBuffer = XLSX.write(summaryWB, { bookType: 'xlsx', type: 'array' });
                 const summaryBlob = new Blob([summaryArrayBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
@@ -2742,6 +2869,55 @@ async function processUploadedFiles() {
         
         btnProcessAction.classList.add('hidden');
         dashboardControls.classList.remove('hidden');
+        if (btnDownloadZip) btnDownloadZip.classList.remove('hidden');
+        if (btnHeaderDownloadZip) btnHeaderDownloadZip.classList.remove('hidden');
+
+        // Dynamically customize button label based on detected parties
+        const processedPartyCodes = getUniquePartyCodes();
+        if (processedPartyCodes.length > 1) {
+            const sortedCodes = [...processedPartyCodes].sort((a, b) => {
+                const numA = parseInt(a, 10);
+                const numB = parseInt(b, 10);
+                if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+                return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+            });
+            const rangeLabel = `${sortedCodes[0]}-${sortedCodes[sortedCodes.length - 1]}_Arranged`;
+            const zipBtnText = `Download Renamed ZIP (${rangeLabel})`;
+            const zipTooltip = `${rangeLabel}.zip`;
+            
+            if (btnDownloadZip) {
+                btnDownloadZip.innerHTML = `<svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg> ${zipBtnText}`;
+                btnDownloadZip.title = zipTooltip;
+            }
+            if (btnHeaderDownloadZip) {
+                btnHeaderDownloadZip.innerHTML = `<svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg> ${zipBtnText}`;
+                btnHeaderDownloadZip.title = zipTooltip;
+            }
+        } else if (processedPartyCodes.length === 1) {
+            const singleLabel = `${processedPartyCodes[0]}_Arranged`;
+            const zipBtnText = `Download Renamed ZIP (${singleLabel})`;
+            const zipTooltip = `${singleLabel}.zip`;
+            
+            if (btnDownloadZip) {
+                btnDownloadZip.innerHTML = `<svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg> ${zipBtnText}`;
+                btnDownloadZip.title = zipTooltip;
+            }
+            if (btnHeaderDownloadZip) {
+                btnHeaderDownloadZip.innerHTML = `<svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg> ${zipBtnText}`;
+                btnHeaderDownloadZip.title = zipTooltip;
+            }
+        } else {
+            const defaultText = `Download Renamed ZIP`;
+            if (btnDownloadZip) {
+                btnDownloadZip.innerHTML = `<svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg> ${defaultText}`;
+                btnDownloadZip.title = "Download Renamed ZIP";
+            }
+            if (btnHeaderDownloadZip) {
+                btnHeaderDownloadZip.innerHTML = `<svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg> ${defaultText}`;
+                btnHeaderDownloadZip.title = "Download Renamed ZIP";
+            }
+        }
+
         hideLoading();
         showToast("Pipeline completed successfully!", "success");
     } catch (err) {
@@ -3004,7 +3180,8 @@ async function downloadAllAsZip() {
     try {
         const processedParties = new Set();
         outputFiles.forEach(f => {
-            if (f.partyCode && f.partyCode !== "__BATCH_ROOT__") processedParties.add(f.partyCode);
+            const pCode = f.partyCode || getPartyCode(f);
+            if (pCode && pCode !== "__BATCH_ROOT__" && pCode !== "PartyCode") processedParties.add(pCode);
         });
         const partyCodesArray = Array.from(processedParties).sort((a, b) => {
             const numA = parseInt(a, 10);
@@ -3016,13 +3193,13 @@ async function downloadAllAsZip() {
         let zipName = "";
         
         if (partyCodesArray.length === 1) {
-            zipName = `${partyCodesArray[0]} processed.zip`;
+            zipName = `${partyCodesArray[0]}_Arranged.zip`;
         } else if (partyCodesArray.length > 1) {
-            zipName = `${partyCodesArray[0]}-${partyCodesArray[partyCodesArray.length - 1]} processed.zip`;
+            zipName = `${partyCodesArray[0]}-${partyCodesArray[partyCodesArray.length - 1]}_Arranged.zip`;
         } else if (uploadedZipBaseName && !uploadedZipBaseName.includes("bundle") && !uploadedZipBaseName.includes("myntra_data_arrange")) {
-            zipName = `${uploadedZipBaseName} processed.zip`;
+            zipName = `${uploadedZipBaseName}_Arranged.zip`;
         } else {
-            zipName = "myntra_data_arrange_processed.zip";
+            zipName = "Arranged.zip";
         }
         
         const keepStructure = toggleStructure.checked;
@@ -3412,7 +3589,7 @@ const SEP_CATEGORIES = {
     simple: {
         id: 'simple',
         name: 'SIMPLE',
-        field: 6, // Column G (Old rule, default) or Column D (3, New rule)
+        field: 3, // Column D (New rule, default) or Column G (6, Old rule)
         headerRows: 2,
         dataStartRow: 3,
         suffix: '-MYNTRA',
@@ -3552,16 +3729,10 @@ async function loadSeparateSessionFromStorage() {
                 return;
             }
 
-            if (data && data.simpleRuleIsNew) {
+            if (data && data.simpleRuleIsNew !== undefined) {
                 const toggleSimple = document.getElementById('toggle-simple-rule');
                 if (toggleSimple) {
-                    toggleSimple.checked = true;
-                    updateSimpleRuleUI();
-                }
-            } else {
-                const toggleSimple = document.getElementById('toggle-simple-rule');
-                if (toggleSimple) {
-                    toggleSimple.checked = false;
+                    toggleSimple.checked = !!data.simpleRuleIsNew;
                     updateSimpleRuleUI();
                 }
             }
@@ -3855,7 +4026,7 @@ function setupSeparateFile() {
     // Simple Rule Toggle (ON = New [Col D], OFF = Old [Col G])
     const toggleSimpleRule = document.getElementById('toggle-simple-rule');
     if (toggleSimpleRule) {
-        toggleSimpleRule.checked = false;
+        toggleSimpleRule.checked = true;
         toggleSimpleRule.addEventListener('change', () => {
             updateSimpleRuleUI();
             reprocessSimpleIfLoaded();
@@ -4659,16 +4830,10 @@ async function loadRenameSessionFromStorage() {
                 return;
             }
 
-            if (data && data.renGMoveIsMerge) {
+            if (data && data.renGMoveIsMerge !== undefined) {
                 const toggleRenGMove = document.getElementById('toggle-ren-g-move');
                 if (toggleRenGMove) {
-                    toggleRenGMove.checked = true;
-                    updateRenGMoveUI();
-                }
-            } else {
-                const toggleRenGMove = document.getElementById('toggle-ren-g-move');
-                if (toggleRenGMove) {
-                    toggleRenGMove.checked = false;
+                    toggleRenGMove.checked = !!data.renGMoveIsMerge;
                     updateRenGMoveUI();
                 }
             }
@@ -4912,6 +5077,7 @@ function setupRenameFile() {
     // Column G Move Target Toggle (ON = Move to Merge, OFF = Move to Folder Create)
     const toggleRenGMove = document.getElementById('toggle-ren-g-move');
     if (toggleRenGMove) {
+        toggleRenGMove.checked = true;
         toggleRenGMove.addEventListener('change', () => {
             updateRenGMoveUI();
             saveRenameSessionToStorage();
@@ -10054,16 +10220,10 @@ async function loadFolderCreateSessionFromStorage() {
                 return;
             }
 
-            if (data && data.fldRuleIsNew) {
+            if (data && data.fldRuleIsNew !== undefined) {
                 const toggleFldRule = document.getElementById('toggle-fld-rule');
                 if (toggleFldRule) {
-                    toggleFldRule.checked = true;
-                    updateFldRuleUI();
-                }
-            } else {
-                const toggleFldRule = document.getElementById('toggle-fld-rule');
-                if (toggleFldRule) {
-                    toggleFldRule.checked = false;
+                    toggleFldRule.checked = !!data.fldRuleIsNew;
                     updateFldRuleUI();
                 }
             }
@@ -10735,7 +10895,7 @@ function setupFolderCreate() {
     // Folder Create Rule Toggle (ON = New [2 Files: Tax + Summary/Details], OFF = Old [3 Files: Order + Tax + Summary/Details])
     const toggleFldRule = document.getElementById('toggle-fld-rule');
     if (toggleFldRule) {
-        toggleFldRule.checked = false;
+        toggleFldRule.checked = true;
         toggleFldRule.addEventListener('change', () => {
             updateFldRuleUI();
             recalculateFldGroupsAndPreview();
@@ -12558,6 +12718,9 @@ function resetProcessorTab() {
     if (btnDownloadZip) {
         btnDownloadZip.classList.add('hidden');
     }
+    if (btnHeaderDownloadZip) {
+        btnHeaderDownloadZip.classList.add('hidden');
+    }
 
     const rangeVal = document.getElementById('range-value');
     if (rangeVal) rangeVal.textContent = "—";
@@ -12583,7 +12746,7 @@ function resetProcessorTab() {
 
     const toggleProcRule = document.getElementById('toggle-proc-rule');
     if (toggleProcRule) {
-        toggleProcRule.checked = false;
+        toggleProcRule.checked = true;
     }
     updateProcRuleUI();
 
@@ -12630,10 +12793,10 @@ function resetRenameTab() {
     const renFullviewModal = document.getElementById('ren-fullview-modal');
     if (renFullviewModal) renFullviewModal.classList.remove('show');
 
-    // Reset Column G move target toggle to default OFF (Move to Folder Create)
+    // Reset Column G move target toggle to default ON (Move to Merge)
     const toggleRenGMove = document.getElementById('toggle-ren-g-move');
     if (toggleRenGMove) {
-        toggleRenGMove.checked = false;
+        toggleRenGMove.checked = true;
     }
     updateRenGMoveUI();
 
@@ -12737,7 +12900,7 @@ function resetSeparateTab() {
 
     const toggleSimpleRule = document.getElementById('toggle-simple-rule');
     if (toggleSimpleRule) {
-        toggleSimpleRule.checked = false;
+        toggleSimpleRule.checked = true;
     }
     updateSimpleRuleUI();
 
@@ -12806,7 +12969,7 @@ function resetFolderCreateTab() {
 
     const toggleFldRule = document.getElementById('toggle-fld-rule');
     if (toggleFldRule) {
-        toggleFldRule.checked = false;
+        toggleFldRule.checked = true;
     }
     updateFldRuleUI();
 
