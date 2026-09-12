@@ -1435,17 +1435,21 @@
                                 </button>
                             </div>
                             <div style="padding: 0.85rem; display: flex; flex-direction: column; gap: 0.6rem;">
-                                <div id="err-date-ranges-container" style="display: flex; flex-direction: column; gap: 0.6rem;">
-                                    <div class="err-date-range-row" style="display: flex; gap: 0.5rem; align-items: flex-end;">
-                                        <div class="select-group" style="flex: 1;">
-                                            <label style="display: block; font-size: 0.72rem; color: var(--text-secondary); margin-bottom: 0.3rem;">From Date</label>
-                                            <input type="date" id="err-from-date" class="select-field err-from-date" style="width: 100%; box-sizing: border-box;">
+                                <div id="err-date-ranges-container" style="display: flex; flex-direction: column; gap: 0.5rem;">
+                                    <div class="err-date-range-row" style="background: rgba(255, 255, 255, 0.04); border: 1px solid var(--panel-border, #e2e8f0); border-radius: 8px; padding: 6px 8px;">
+                                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                                            <span class="range-title" style="font-size: 0.7rem; font-weight: 600; color: var(--text-secondary);">Sale Range #1</span>
                                         </div>
-                                        <div class="select-group" style="flex: 1;">
-                                            <label style="display: block; font-size: 0.72rem; color: var(--text-secondary); margin-bottom: 0.3rem;">To Date</label>
-                                            <input type="date" id="err-to-date" class="select-field err-to-date" style="width: 100%; box-sizing: border-box;">
+                                        <div style="display: flex; gap: 6px;">
+                                            <div class="select-group" style="flex: 1; min-width: 0;">
+                                                <label style="display: block; font-size: 0.68rem; color: var(--text-secondary); margin-bottom: 2px;">From Date</label>
+                                                <input type="date" id="err-from-date" class="select-field err-from-date" style="width: 100%; box-sizing: border-box; font-size: 0.78rem; padding: 4px; height: 32px;">
+                                            </div>
+                                            <div class="select-group" style="flex: 1; min-width: 0;">
+                                                <label style="display: block; font-size: 0.68rem; color: var(--text-secondary); margin-bottom: 2px;">To Date</label>
+                                                <input type="date" id="err-to-date" class="select-field err-to-date" style="width: 100%; box-sizing: border-box; font-size: 0.78rem; padding: 4px; height: 32px;">
+                                            </div>
                                         </div>
-                                        <div style="width: 34px; height: 34px;"></div>
                                     </div>
                                 </div>
                                 <div style="font-size: 0.68rem; color: var(--text-secondary); line-height: 1.4; border-top: 1px solid var(--panel-border); padding-top: 0.5rem; margin-top: 0.2rem;">

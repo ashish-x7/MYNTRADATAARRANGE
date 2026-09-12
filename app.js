@@ -7683,28 +7683,51 @@ function getMyntraActiveDateRanges() {
 document.addEventListener('DOMContentLoaded', () => {
     const btnErrAddRange = document.getElementById('btn-err-add-range');
     const errDateRangesContainer = document.getElementById('err-date-ranges-container');
+
+    function updateMyntraRangeTitles() {
+        if (!errDateRangesContainer) return;
+        const rows = errDateRangesContainer.querySelectorAll('.err-date-range-row');
+        rows.forEach((r, idx) => {
+            const titleSpan = r.querySelector('.range-title');
+            if (titleSpan) {
+                titleSpan.textContent = `Sale Range #${idx + 1}`;
+            }
+        });
+    }
+
     if (btnErrAddRange && errDateRangesContainer) {
         btnErrAddRange.addEventListener('click', () => {
+            const rangeIndex = errDateRangesContainer.querySelectorAll('.err-date-range-row').length + 1;
             const row = document.createElement('div');
             row.className = 'err-date-range-row';
-            row.style.display = 'flex';
-            row.style.gap = '0.5rem';
-            row.style.alignItems = 'flex-end';
+            row.style.background = 'rgba(255, 255, 255, 0.04)';
+            row.style.border = '1px solid var(--panel-border, #e2e8f0)';
+            row.style.borderRadius = '8px';
+            row.style.padding = '6px 8px';
             row.style.marginTop = '0.3rem';
             row.innerHTML = `
-                <div class="select-group" style="flex: 1;">
-                    <label style="display: block; font-size: 0.72rem; color: var(--text-secondary); margin-bottom: 0.3rem;">From Date</label>
-                    <input type="date" class="select-field err-from-date" style="width: 100%; box-sizing: border-box;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                    <span class="range-title" style="font-size: 0.7rem; font-weight: 600; color: var(--text-secondary);">Sale Range #${rangeIndex}</span>
+                    <button type="button" class="remove-err-range-btn" title="Remove Range" style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); color: #ef4444; font-size: 0.7rem; font-weight: 600; cursor: pointer; padding: 2px 8px; border-radius: 4px; display: inline-flex; align-items: center; gap: 4px;">
+                        <svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                        Remove
+                    </button>
                 </div>
-                <div class="select-group" style="flex: 1;">
-                    <label style="display: block; font-size: 0.72rem; color: var(--text-secondary); margin-bottom: 0.3rem;">To Date</label>
-                    <input type="date" class="select-field err-to-date" style="width: 100%; box-sizing: border-box;">
+                <div style="display: flex; gap: 6px;">
+                    <div class="select-group" style="flex: 1; min-width: 0;">
+                        <label style="display: block; font-size: 0.68rem; color: var(--text-secondary); margin-bottom: 2px;">From Date</label>
+                        <input type="date" class="select-field err-from-date" style="width: 100%; box-sizing: border-box; font-size: 0.78rem; padding: 4px; height: 32px;">
+                    </div>
+                    <div class="select-group" style="flex: 1; min-width: 0;">
+                        <label style="display: block; font-size: 0.68rem; color: var(--text-secondary); margin-bottom: 2px;">To Date</label>
+                        <input type="date" class="select-field err-to-date" style="width: 100%; box-sizing: border-box; font-size: 0.78rem; padding: 4px; height: 32px;">
+                    </div>
                 </div>
-                <button type="button" class="btn btn-danger remove-err-range-btn" title="Remove Range" style="height: 34px; width: 34px; padding: 0; display: flex; align-items: center; justify-content: center; border-radius: 6px; cursor: pointer; flex-shrink: 0;">
-                    <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-                </button>
             `;
-            row.querySelector('.remove-err-range-btn').addEventListener('click', () => row.remove());
+            row.querySelector('.remove-err-range-btn').addEventListener('click', () => {
+                row.remove();
+                updateMyntraRangeTitles();
+            });
             errDateRangesContainer.appendChild(row);
         });
     }
