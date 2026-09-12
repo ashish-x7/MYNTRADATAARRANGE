@@ -1426,23 +1426,32 @@
                             </div>
                         </div>
 
-                        <!-- Config Card -->
+                        <!-- Config Card with Multi-Date Range Support -->
                         <div class="card glass" style="margin-top: 0.5rem;">
-                            <div class="card-header">
+                            <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
                                 <h2>Date Range & Rules</h2>
+                                <button type="button" class="btn btn-secondary" id="btn-err-add-range" style="padding: 4px 10px; font-size: 0.75rem; border-radius: 6px; cursor: pointer;">
+                                    + Add Date Range
+                                </button>
                             </div>
                             <div style="padding: 0.85rem; display: flex; flex-direction: column; gap: 0.6rem;">
-                                <div class="select-group">
-                                    <label style="display: block; font-size: 0.72rem; color: var(--text-secondary); margin-bottom: 0.3rem;">From Date</label>
-                                    <input type="date" id="err-from-date" class="select-field" style="width: 100%; box-sizing: border-box;">
-                                </div>
-                                <div class="select-group">
-                                    <label style="display: block; font-size: 0.72rem; color: var(--text-secondary); margin-bottom: 0.3rem;">To Date</label>
-                                    <input type="date" id="err-to-date" class="select-field" style="width: 100%; box-sizing: border-box;">
+                                <div id="err-date-ranges-container" style="display: flex; flex-direction: column; gap: 0.6rem;">
+                                    <div class="err-date-range-row" style="display: flex; gap: 0.5rem; align-items: flex-end;">
+                                        <div class="select-group" style="flex: 1;">
+                                            <label style="display: block; font-size: 0.72rem; color: var(--text-secondary); margin-bottom: 0.3rem;">From Date</label>
+                                            <input type="date" id="err-from-date" class="select-field err-from-date" style="width: 100%; box-sizing: border-box;">
+                                        </div>
+                                        <div class="select-group" style="flex: 1;">
+                                            <label style="display: block; font-size: 0.72rem; color: var(--text-secondary); margin-bottom: 0.3rem;">To Date</label>
+                                            <input type="date" id="err-to-date" class="select-field err-to-date" style="width: 100%; box-sizing: border-box;">
+                                        </div>
+                                        <div style="width: 34px; height: 34px;"></div>
+                                    </div>
                                 </div>
                                 <div style="font-size: 0.68rem; color: var(--text-secondary); line-height: 1.4; border-top: 1px solid var(--panel-border); padding-top: 0.5rem; margin-top: 0.2rem;">
                                     <p>⚠️ Removes Details rows if Column V is `"0"` or `"Price Dispute : 0"`.</p>
                                     <p>🔗 Matches Details Column B to Data Column E, writing matching Column C values to Column W.</p>
+                                    <p>📅 Excludes orders falling inside any configured sale date ranges.</p>
                                 </div>
                             </div>
                         </div>

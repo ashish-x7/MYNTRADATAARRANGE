@@ -7661,6 +7661,55 @@ function renderErrorPreview() {
     });
 }
 
+function getMyntraActiveDateRanges() {
+    const ranges = [];
+    const rows = document.querySelectorAll('#err-date-ranges-container .err-date-range-row');
+    rows.forEach(r => {
+        const fromInp = r.querySelector('.err-from-date');
+        const toInp = r.querySelector('.err-to-date');
+        const fVal = fromInp ? fromInp.value : '';
+        const tVal = toInp ? toInp.value : '';
+        if (fVal || tVal) {
+            const f = fVal ? new Date(fVal) : null;
+            const t = tVal ? new Date(tVal) : null;
+            if (f) f.setHours(0, 0, 0, 0);
+            if (t) t.setHours(23, 59, 59, 999);
+            ranges.push({ from: f, to: t, fromStr: fVal, toStr: tVal });
+        }
+    });
+    return ranges;
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const btnErrAddRange = document.getElementById('btn-err-add-range');
+    const errDateRangesContainer = document.getElementById('err-date-ranges-container');
+    if (btnErrAddRange && errDateRangesContainer) {
+        btnErrAddRange.addEventListener('click', () => {
+            const row = document.createElement('div');
+            row.className = 'err-date-range-row';
+            row.style.display = 'flex';
+            row.style.gap = '0.5rem';
+            row.style.alignItems = 'flex-end';
+            row.style.marginTop = '0.3rem';
+            row.innerHTML = `
+                <div class="select-group" style="flex: 1;">
+                    <label style="display: block; font-size: 0.72rem; color: var(--text-secondary); margin-bottom: 0.3rem;">From Date</label>
+                    <input type="date" class="select-field err-from-date" style="width: 100%; box-sizing: border-box;">
+                </div>
+                <div class="select-group" style="flex: 1;">
+                    <label style="display: block; font-size: 0.72rem; color: var(--text-secondary); margin-bottom: 0.3rem;">To Date</label>
+                    <input type="date" class="select-field err-to-date" style="width: 100%; box-sizing: border-box;">
+                </div>
+                <button type="button" class="btn btn-danger remove-err-range-btn" title="Remove Range" style="height: 34px; width: 34px; padding: 0; display: flex; align-items: center; justify-content: center; border-radius: 6px; cursor: pointer; flex-shrink: 0;">
+                    <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                </button>
+            `;
+            row.querySelector('.remove-err-range-btn').addEventListener('click', () => row.remove());
+            errDateRangesContainer.appendChild(row);
+        });
+    }
+});
+
 async function runErrorCheckProcess() {
     if (!errDetailsFile || !errDataFile) {
         showToast("Please upload both Details and Data files first.", "error");
@@ -7684,14 +7733,11 @@ async function runErrorCheckProcess() {
 
     try {
         // Retrieve date filters from UI
-        const fromDateStr = document.getElementById('err-from-date').value;
-        const toDateStr = document.getElementById('err-to-date').value;
-
-        const fromDate = fromDateStr ? new Date(fromDateStr) : null;
-        const toDate = toDateStr ? new Date(toDateStr) : null;
-
-        if (fromDate) fromDate.setHours(0, 0, 0, 0);
-        if (toDate) toDate.setHours(23, 59, 59, 999);
+        const activeDateRanges = getMyntraActiveDateRanges();
+        if (activeDateRanges.length > 0) {
+            const rangeLogs = activeDateRanges.map(r => `[${r.fromStr || 'Start'} to ${r.toStr || 'End'}]`).join(', ');
+            addLog(`Active sale exclusion ranges (${activeDateRanges.length}): ${rangeLogs}`, "info");
+        }
 
         updateErrProgress(10, "Reading Myntra Details file...");
         await new Promise(r => setTimeout(r, 150));
@@ -7768,14 +7814,20 @@ async function runErrorCheckProcess() {
             }
             row[22] = cellValC;
 
-            // Date filter check
-            if (fromDate || toDate) {
+            // Multi-Date Range filter check (Exclude if matching ANY active range)
+            if (activeDateRanges.length > 0) {
                 const cellDate = parseCellAsDate(cellValC);
                 if (cellDate) {
-                    let inRange = true;
-                    if (fromDate && cellDate < fromDate) inRange = false;
-                    if (toDate && cellDate > toDate) inRange = false;
-
+                    const cellTime = cellDate.getTime();
+                    let inRange = false;
+                    for (const rng of activeDateRanges) {
+                        const satisfiesFrom = rng.from ? cellTime >= rng.from.getTime() : true;
+                        const satisfiesTo = rng.to ? cellTime <= rng.to.getTime() : true;
+                        if (satisfiesFrom && satisfiesTo) {
+                            inRange = true;
+                            break;
+                        }
+                    }
                     if (inRange) {
                         dateFilteredCount++;
                         continue; // delete/skip row
@@ -13007,6 +13059,19 @@ function resetMyntraErrorTab() {
     if (errDetailsInput) errDetailsInput.value = "";
     if (errDataInput) errDataInput.value = "";
     if (errFromDate) errFromDate.value = "";
+    if (errDateRangesContainer) {
+        const rows = errDateRangesContainer.querySelectorAll('.err-date-range-row');
+        rows.forEach((r, idx) => {
+            if (idx === 0) {
+                const f = r.querySelector('.err-from-date');
+                const t = r.querySelector('.err-to-date');
+                if (f) f.value = '';
+                if (t) t.value = '';
+            } else {
+                r.remove();
+            }
+        });
+    }
     if (errToDate) errToDate.value = "";
 
     const errDetailsLabel = document.getElementById('err-details-label');
