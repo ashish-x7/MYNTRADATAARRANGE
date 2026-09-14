@@ -7800,17 +7800,23 @@ async function runErrorCheckProcess() {
             }
         }
 
-        updateErrProgress(45, "Creating mapping index from Data (Column E -> Column C)...");
+        updateErrProgress(45, "Creating mapping index from Data (Column L -> Column G)...");
         await new Promise(r => setTimeout(r, 200));
 
-        // Data AOA: Map Column E (index 4) -> Column C (index 2)
+        // Data AOA: Map Column L (index 11) -> Column G (index 6)
         const dataMap = new Map();
         for (let j = 1; j < dataAOA.length; j++) {
             const row = dataAOA[j];
-            const keyE = row[4] !== undefined ? cleanKey(row[4]) : "";
-            if (keyE) {
-                const valC = row[2] !== undefined ? row[2] : "";
-                dataMap.set(keyE, valC);
+            if (!row || row.length === 0) continue;
+            // Primary: Column L (index 11) for Key, Column G (index 6) for Order Date
+            const keyL = (row.length > 11 && row[11] !== undefined && cleanKey(row[11]) !== "")
+                ? cleanKey(row[11])
+                : (row[4] !== undefined ? cleanKey(row[4]) : "");
+            const valG = (row.length > 11 && row[11] !== undefined && cleanKey(row[11]) !== "")
+                ? (row[6] !== undefined ? row[6] : "")
+                : (row[2] !== undefined ? row[2] : "");
+            if (keyL) {
+                dataMap.set(keyL, valG);
             }
         }
 
@@ -8856,7 +8862,7 @@ async function runPurchaseErrorProcess() {
         mePurchaseLog(`Selected Details Files: ${mePurchaseDetailsFiles.length}`, 'info');
         mePurchaseLog(`Selected Myntra Data File: ${mePurchaseDataFile.name}`, 'info');
 
-        // Step 1: Read and Index the Myntra Data File (Col E -> Col C)
+        // Step 1: Read and Index the Myntra Data File (Col L -> Col G)
         if (progressBar) progressBar.style.width = '12%';
         if (progressPercent) progressPercent.innerText = '12%';
         if (progressStepText) progressStepText.innerText = 'Parsing Myntra Data spreadsheet...';
@@ -8898,27 +8904,33 @@ async function runPurchaseErrorProcess() {
         }
 
         const dataHeaderRow = dataAoa[dataHeaderRowIndex] || [];
-        let invoiceColE = 4; // Column E (index 4) default
-        let dateColC = 2;    // Column C (index 2) default
+        let invoiceColL = 11; // Column L (index 11) default
+        let dateColG = 6;     // Column G (index 6) default
 
         for (let c = 0; c < dataHeaderRow.length; c++) {
             const val = String(dataHeaderRow[c] || "").trim().toLowerCase().replace(/[\._\-\s]+/g, " ");
             if ((val === "seller order no" || val === "seller invoice no" || val.includes("seller invoice") || val.includes("seller order") || val.includes("invoice no")) && !val.includes("date")) {
-                invoiceColE = c;
+                invoiceColL = c;
             } else if ((val === "cust order date" || val === "order date" || val.includes("order date") || val.includes("cust order")) && !val.includes("invoice")) {
-                dateColC = c;
+                dateColG = c;
             }
         }
 
-        mePurchaseLog(`Myntra Data Columns: Invoice Col = Index ${invoiceColE} (Col E), Date Col = Index ${dateColC} (Col C)`, 'info');
+        mePurchaseLog(`Myntra Data Columns: Invoice Col = Index ${invoiceColL} (Col L), Date Col = Index ${dateColG} (Col G)`, 'info');
 
         // Build Key -> Date Map from Myntra Data File
         const myntraDataMap = new Map();
         for (let r = dataHeaderRowIndex + 1; r < dataAoa.length; r++) {
             const row = dataAoa[r];
             if (!row || row.length === 0) continue;
-            const invVal = row[invoiceColE];
-            const dateVal = row[dateColC];
+            let invVal = row[invoiceColL];
+            let dateVal = row[dateColG];
+
+            // Fallback to Column E (4) / Column C (2) if Column L is not in row
+            if ((invVal === undefined || invVal === "") && row.length <= 11 && row[4] !== undefined) {
+                invVal = row[4];
+                dateVal = row[2];
+            }
 
             const formattedDate = formatPurchaseDateVal(dateVal);
             const cleanInv = cleanPurchaseKeyVal(invVal);
@@ -9017,7 +9029,7 @@ async function runPurchaseErrorProcess() {
                 if (row[3] !== undefined && row[3] !== null) row[3] = toPureText(row[3]);
                 if (row[1] !== undefined && row[1] !== null) row[1] = toPureText(row[1]);
 
-                // Rule: Take Invoice No from Column B (index 1), find in Myntra Data map (Col E), write to Column O (index 14)
+                // Rule: Take Invoice No from Column B (index 1), find in Myntra Data map (Col L), write to Column O (index 14)
                 const invoiceNoVal = row[invoiceColB];
                 const cleanInv = cleanPurchaseKeyVal(invoiceNoVal);
 
@@ -9608,7 +9620,7 @@ async function runLossErrorProcess() {
         leLog(`Selected Details Files: ${leDetailsFiles.length}`, 'info');
         leLog(`Selected Myntra Data File: ${leDataFile.name}`, 'info');
 
-        // Step 1: Read and Index the Myntra Data File (Col E -> Col C)
+        // Step 1: Read and Index the Myntra Data File (Col L -> Col G)
         if (progressBar) progressBar.style.width = '12%';
         if (progressPercent) progressPercent.innerText = '12%';
         if (progressStepText) progressStepText.innerText = 'Parsing Myntra Data spreadsheet...';
@@ -9650,27 +9662,33 @@ async function runLossErrorProcess() {
         }
 
         const dataHeaderRow = dataAoa[dataHeaderRowIndex] || [];
-        let invoiceColE = 4; // Column E default
-        let dateColC = 2;    // Column C default
+        let invoiceColL = 11; // Column L default
+        let dateColG = 6;     // Column G default
 
         for (let c = 0; c < dataHeaderRow.length; c++) {
             const val = String(dataHeaderRow[c] || "").trim().toLowerCase().replace(/[\._\-\s]+/g, " ");
             if ((val === "seller order no" || val === "seller invoice no" || val.includes("seller invoice") || val.includes("seller order") || val.includes("invoice no")) && !val.includes("date")) {
-                invoiceColE = c;
+                invoiceColL = c;
             } else if ((val === "cust order date" || val === "order date" || val.includes("order date") || val.includes("cust order")) && !val.includes("invoice")) {
-                dateColC = c;
+                dateColG = c;
             }
         }
 
-        leLog(`Myntra Data Columns: Invoice Col = Index ${invoiceColE} (Col E), Date Col = Index ${dateColC} (Col C)`, 'info');
+        leLog(`Myntra Data Columns: Invoice Col = Index ${invoiceColL} (Col L), Date Col = Index ${dateColG} (Col G)`, 'info');
 
         // Build Key -> Date Map from Myntra Data
         const myntraDataMap = new Map();
         for (let r = dataHeaderRowIndex + 1; r < dataAoa.length; r++) {
             const row = dataAoa[r];
             if (!row || row.length === 0) continue;
-            const invVal = row[invoiceColE];
-            const dateVal = row[dateColC];
+            let invVal = row[invoiceColL];
+            let dateVal = row[dateColG];
+
+            // Fallback to Column E (4) / Column C (2) if Column L is not in row
+            if ((invVal === undefined || invVal === "") && row.length <= 11 && row[4] !== undefined) {
+                invVal = row[4];
+                dateVal = row[2];
+            }
 
             const formattedDate = formatLossDateVal(dateVal);
             const cleanInv = cleanLossKeyVal(invVal);
@@ -9810,7 +9828,7 @@ async function runLossErrorProcess() {
                 if (!row || row.length === 0) continue;
                 fileTotalRows++;
 
-                // Rule: Strictly take Invoice No from Column G (index 6), match in Myntra Data (Col E), write into Column F (index 5)
+                // Rule: Strictly take Invoice No from Column G (index 6), match in Myntra Data (Col L), write into Column F (index 5)
                 const saleInvoiceVal = row[colG_SaleInvoice];
                 const cleanG = cleanLossKeyVal(saleInvoiceVal);
 
