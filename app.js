@@ -604,12 +604,13 @@ async function processZipFile(zipFile) {
             const promise = zipEntry.async("blob").then((blob) => {
                 const filename = zipEntry.name.split('/').pop();
                 
-                // Check if relativePath already contains a numeric folder prefix
+                // Check if relativePath already contains a numeric or MY-prefixed folder prefix
                 let adjustedPath = relativePath;
                 const pathParts = relativePath.split('/');
                 let hasNumericFolder = false;
                 for (let i = 0; i < pathParts.length - 1; i++) {
-                    if (/^\d+/.test(pathParts[i])) {
+                    const seg = pathParts[i].trim();
+                    if (/^\d+/.test(seg) || /^MY[\s\-_]*\d+/i.test(seg)) {
                         hasNumericFolder = true;
                         break;
                     }
@@ -910,7 +911,7 @@ function normalizeMyPartyCode(val) {
     return str;
 }
 
-// Extract party code (e.g. 139) from selected OD file path or filename
+// Extract party code (e.g. 139, MY2) from selected OD file path or filename
 function getPartyCode(odFileObj) {
     if (!odFileObj) return "PartyCode";
     
@@ -919,33 +920,61 @@ function getPartyCode(odFileObj) {
         const parts = odFileObj.path.split(/[\/\\]/);
         // Loop from right to left (deepest folder to root folder)
         for (let i = parts.length - 2; i >= 0; i--) {
-            let seg = normalizeMyPartyCode(parts[i].trim());
-            // First check if folder segment starts with digits
-            const match = seg.match(/^\d+/);
-            if (match) return match[0];
-            
-            // Check if folder segment contains known party code digits
-            const allDigitMatches = seg.match(/\d+/g);
-            if (allDigitMatches) {
+            const rawSeg = parts[i].trim();
+            if (!rawSeg) continue;
+
+            // Check A: If folder starts with MY followed by digits (e.g. "My2", "MY2", "my2", "MY-2", "MY_2", "My 2")
+            // Retains "MY" prefix as uppercase canonical form (e.g. "MY2", NOT "2")
+            const myMatch = rawSeg.match(/^MY[\s\-_]*(\d+)(?=[\s\-_.\/]|$)/i);
+            if (myMatch) {
+                return `MY${myMatch[1]}`;
+            }
+
+            // Check B: Folder segment directly starts with digits (e.g. "139", "106", "2")
+            const digitMatch = rawSeg.match(/^\d+/);
+            if (digitMatch) return digitMatch[0];
+
+            // Check C: Folder segment matches exact party code in partyData
+            if (typeof partyData !== "undefined" && partyData.length > 0) {
+                const found = partyData.find(item => item && (
+                    String(item.code).trim().toUpperCase() === rawSeg.toUpperCase() ||
+                    (item.partyCode && String(item.partyCode).trim().toUpperCase().startsWith(rawSeg.toUpperCase()))
+                ));
+                if (found && found.code) return String(found.code).trim();
+            }
+
+            // Check D: Check if folder segment contains known party code digits
+            const allDigitMatches = rawSeg.match(/\d+/g);
+            if (allDigitMatches && typeof partyData !== "undefined" && partyData.length > 0) {
                 for (const num of allDigitMatches) {
-                    const exists = partyData.some(item => String(item.code).trim() === num.trim());
+                    const exists = partyData.some(item => {
+                        const itemCode = String(item.code).trim();
+                        return itemCode === num.trim() || itemCode.toUpperCase() === `MY${num.trim()}`;
+                    });
                     if (exists) return num;
                 }
             }
         }
     }
     
-    // 2. Try file name starting digits
+    // 2. Try file name starting digits or MY prefix
     if (odFileObj.name) {
-        let fName = normalizeMyPartyCode(odFileObj.name.trim());
-        const match = fName.match(/^\d+/);
-        if (match) return match[0];
+        const rawName = odFileObj.name.trim();
+        const myMatch = rawName.match(/^MY[\s\-_]*(\d+)(?=[\s\-_.\/]|$)/i);
+        if (myMatch) {
+            return `MY${myMatch[1]}`;
+        }
+        const digitMatch = rawName.match(/^\d+/);
+        if (digitMatch) return digitMatch[0];
         
         // Check if file name contains known party code digits
-        const allDigitMatches = odFileObj.name.match(/\d+/g);
-        if (allDigitMatches) {
+        const allDigitMatches = rawName.match(/\d+/g);
+        if (allDigitMatches && typeof partyData !== "undefined" && partyData.length > 0) {
             for (const num of allDigitMatches) {
-                const exists = partyData.some(item => String(item.code).trim() === num.trim());
+                const exists = partyData.some(item => {
+                    const itemCode = String(item.code).trim();
+                    return itemCode === num.trim() || itemCode.toUpperCase() === `MY${num.trim()}`;
+                });
                 if (exists) return num;
             }
         }
@@ -994,29 +1023,44 @@ function getPartyCode(odFileObj) {
 function getPartyCodeName(partyCode) {
     if (!partyCode) return "PartyCode";
     const codeClean = String(partyCode).trim();
+    const numOnlyMatch = codeClean.match(/\d+/);
+    const numOnly = numOnlyMatch ? numOnlyMatch[0] : codeClean;
 
-    // 1. Direct code match in partyData
-    let found = partyData.find(item => item && String(item.code).trim() === codeClean);
+    // 1. Direct or cross-normalized code match in partyData (matches "MY2", "2", "02")
+    let found = partyData.find(item => item && (
+        String(item.code).trim().toUpperCase() === codeClean.toUpperCase() ||
+        String(item.code).trim() === numOnly ||
+        String(item.code).trim().toUpperCase() === `MY${numOnly}` ||
+        (!isNaN(Number(numOnly)) && Number(String(item.code).trim()) === Number(numOnly))
+    ));
 
-    // 2. Starts-with match in partyData (e.g. item.partyCode starts with "217-" or "217 ")
+    // 2. Starts-with match in partyData (e.g. item.partyCode starts with "MY2-", "2-", "217-")
     if (!found) {
         found = partyData.find(item => item && item.partyCode && (
-            String(item.partyCode).trim().startsWith(`${codeClean}-`) ||
-            String(item.partyCode).trim().startsWith(`${codeClean} `) ||
-            String(item.partyCode).trim().startsWith(`${codeClean}_`)
+            String(item.partyCode).trim().toUpperCase().startsWith(`${codeClean.toUpperCase()}-`) ||
+            String(item.partyCode).trim().toUpperCase().startsWith(`${codeClean.toUpperCase()} `) ||
+            String(item.partyCode).trim().toUpperCase().startsWith(`${codeClean.toUpperCase()}_`) ||
+            String(item.partyCode).trim().startsWith(`${numOnly}-`) ||
+            String(item.partyCode).trim().startsWith(`${numOnly} `) ||
+            String(item.partyCode).trim().startsWith(`${numOnly}_`) ||
+            String(item.partyCode).trim().toUpperCase().startsWith(`MY${numOnly}-`) ||
+            String(item.partyCode).trim().toUpperCase().startsWith(`MY${numOnly} `)
         ));
     }
 
     // 3. Substring match in partyData
     if (!found) {
-        found = partyData.find(item => item && item.partyCode && String(item.partyCode).includes(codeClean));
+        found = partyData.find(item => item && item.partyCode && (
+            String(item.partyCode).toUpperCase().includes(codeClean.toUpperCase()) ||
+            (numOnly.length >= 2 && String(item.partyCode).includes(numOnly))
+        ));
     }
 
     if (found && found.partyCode) {
         return found.partyCode;
     }
 
-    // 4. If not in database, check uploaded files path/filename for folder name (e.g. "217-VENDOR NAME")
+    // 4. If not in database, check uploaded files path/filename for folder name (e.g. "MY2-VENDOR NAME")
     if (typeof filesList !== "undefined" && filesList.length > 0) {
         const partyFiles = filesList.filter(f => getPartyCode(f) === codeClean || f.partyCode === codeClean);
         for (const f of partyFiles) {
@@ -1025,7 +1069,7 @@ function getPartyCodeName(partyCode) {
                 const parts = f.path.split(/[\/\\]/);
                 for (let i = parts.length - 2; i >= 0; i--) {
                     const segment = parts[i].trim();
-                    if (segment.startsWith(codeClean) && /[a-zA-Z]/.test(segment)) {
+                    if ((segment.toUpperCase().startsWith(codeClean.toUpperCase()) || segment.startsWith(numOnly)) && /[a-zA-Z]/.test(segment)) {
                         return segment;
                     }
                 }
@@ -1033,7 +1077,7 @@ function getPartyCodeName(partyCode) {
             // Check filename
             if (f.name) {
                 const baseName = f.name.substring(0, f.name.lastIndexOf('.')) || f.name;
-                if (baseName.startsWith(codeClean) && /[a-zA-Z]/.test(baseName)) {
+                if ((baseName.toUpperCase().startsWith(codeClean.toUpperCase()) || baseName.startsWith(numOnly)) && /[a-zA-Z]/.test(baseName)) {
                     const parts = baseName.split('-');
                     if (parts.length >= 2) {
                         return `${parts[0]}-${parts[1]}`;
@@ -1057,11 +1101,9 @@ function getPartyCodeName(partyCode) {
         "139": "139-INDO PRIMO"
     };
     if (defaultKnownParties[codeClean]) return defaultKnownParties[codeClean];
+    if (defaultKnownParties[numOnly]) return defaultKnownParties[numOnly];
 
-    // 6. Fallback: If codeClean already contains letters, return it; otherwise return codeClean
-    if (/[a-zA-Z]/.test(codeClean)) {
-        return codeClean;
-    }
+    // 6. Fallback: Return codeClean (e.g. "MY2")
     return codeClean;
 }
 
@@ -3638,6 +3680,8 @@ let sepCategoryState = {
 
 let sepFullviewCategory = 'all'; // 'all', 'simple', 'details', 'summary', 'tax'
 let sepSessionTimerInterval = null;
+let sepSelectedItems = new Set(); // Stores composite key "${catKey}:::${val}"
+let currentSepFullViewList = [];
 
 // IndexedDB Session Storage Config (1 Hour Expiry) for Separate Tab
 const SEP_DB_NAME = 'MyntraSeparateCacheDB_v2';
@@ -4005,8 +4049,53 @@ function setupSeparateFile() {
     // Full View Modal controls
     const btnCloseSepFullview = document.getElementById('btn-close-sep-fullview');
     const sepFullviewSearch = document.getElementById('sep-fullview-search');
+    const sepSelectAll = document.getElementById('sep-select-all');
+    const btnSepDeleteSelected = document.getElementById('btn-sep-delete-selected');
+
     if (btnCloseSepFullview) btnCloseSepFullview.addEventListener('click', closeSepFullViewModal);
     if (sepFullviewSearch) sepFullviewSearch.addEventListener('input', renderSepFullViewModalRows);
+
+    if (sepSelectAll) {
+        sepSelectAll.addEventListener('change', (e) => {
+            const isChecked = e.target.checked;
+            if (isChecked) {
+                currentSepFullViewList.forEach(item => sepSelectedItems.add(`${item.catKey}:::${item.val}`));
+            } else {
+                currentSepFullViewList.forEach(item => sepSelectedItems.delete(`${item.catKey}:::${item.val}`));
+            }
+            renderSepFullViewModalRows();
+        });
+    }
+
+    if (btnSepDeleteSelected) {
+        btnSepDeleteSelected.addEventListener('click', () => {
+            const count = sepSelectedItems.size;
+            if (count === 0) return;
+            showDeleteConfirmation({
+                title: `Delete ${count} Split Groups?`,
+                message: `Are you sure you want to delete ${count} selected split group${count === 1 ? '' : 's'}?`,
+                onConfirm: () => {
+                    sepSelectedItems.forEach(itemKey => {
+                        const [catKey, ...rest] = itemKey.split(':::');
+                        const val = rest.join(':::');
+                        const state = sepCategoryState[catKey];
+                        if (state) {
+                            state.uniqueValues = state.uniqueValues.filter(v => v !== val);
+                            state.groups.delete(val);
+                            const badge = document.getElementById(`sep-badge-${catKey}`);
+                            if (badge) badge.textContent = `${state.uniqueValues.length} unique`;
+                        }
+                    });
+                    const deletedCount = sepSelectedItems.size;
+                    sepSelectedItems.clear();
+                    renderAllSeparatePreviews();
+                    renderSepFullViewModalRows();
+                    saveSeparateSessionToStorage();
+                    showToast(`${deletedCount} split item${deletedCount === 1 ? '' : 's'} removed.`, "info");
+                }
+            });
+        });
+    }
 
     document.querySelectorAll('.sep-filter-btn').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -4312,6 +4401,7 @@ function removeSepGroup(catKey, uniqueVal) {
     const state = sepCategoryState[catKey];
     if (!state) return;
 
+    sepSelectedItems.delete(`${catKey}:::${uniqueVal}`);
     state.uniqueValues = state.uniqueValues.filter(v => v !== uniqueVal);
     state.groups.delete(uniqueVal);
 
@@ -4554,6 +4644,7 @@ function openSepFullViewModal(category = 'all') {
 
     if (!modal) return;
     if (searchInput) searchInput.value = '';
+    sepSelectedItems.clear();
 
     // Update active category filter button
     document.querySelectorAll('.sep-filter-btn').forEach(btn => {
@@ -4574,6 +4665,37 @@ function closeSepFullViewModal() {
     if (modal) {
         modal.classList.remove('show');
         modal.classList.add('hidden');
+    }
+}
+
+function updateSepBulkDeleteUI(list = null) {
+    const btnDel = document.getElementById('btn-sep-delete-selected');
+    const countSpan = document.getElementById('sep-selected-count');
+    const selectAll = document.getElementById('sep-select-all');
+
+    const selCount = sepSelectedItems.size;
+    if (countSpan) countSpan.textContent = selCount;
+
+    if (btnDel) {
+        if (selCount > 0) {
+            btnDel.classList.remove('hidden');
+            btnDel.style.display = 'inline-flex';
+        } else {
+            btnDel.classList.add('hidden');
+            btnDel.style.display = 'none';
+        }
+    }
+
+    if (selectAll && list) {
+        if (list.length > 0) {
+            const allSelected = list.every(item => sepSelectedItems.has(`${item.catKey}:::${item.val}`));
+            const someSelected = list.some(item => sepSelectedItems.has(`${item.catKey}:::${item.val}`));
+            selectAll.checked = allSelected;
+            selectAll.indeterminate = !allSelected && someSelected;
+        } else {
+            selectAll.checked = false;
+            selectAll.indeterminate = false;
+        }
     }
 }
 
@@ -4620,17 +4742,24 @@ function renderSepFullViewModalRows() {
         }
     });
 
+    currentSepFullViewList = list;
+
     if (countTag) countTag.textContent = `${list.length} unique values`;
 
     if (list.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-muted); padding: 2rem;">No matching split files found.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 2rem;">No matching split files found.</td></tr>`;
+        updateSepBulkDeleteUI(list);
         return;
     }
 
     list.forEach((item, idx) => {
         const tr = document.createElement('tr');
         tr.className = `row-color-${idx % 7}`;
+        const isChecked = sepSelectedItems.has(`${item.catKey}:::${item.val}`);
         tr.innerHTML = `
+            <td style="text-align: center;">
+                <input type="checkbox" class="sep-item-checkbox" data-catkey="${item.catKey}" data-val="${item.val}" ${isChecked ? 'checked' : ''} style="cursor: pointer; width: 15px; height: 15px; accent-color: var(--primary);">
+            </td>
             <td><strong>${idx + 1}</strong></td>
             <td><span class="badge ${item.badgeClass}" style="font-weight: 700;">${item.categoryName}</span></td>
             <td><span style="font-family: monospace; font-weight: 700; color: var(--text-primary); font-size: 0.78rem;">${item.val}</span></td>
@@ -4647,6 +4776,19 @@ function renderSepFullViewModalRows() {
                 </div>
             </td>
         `;
+
+        const chk = tr.querySelector('.sep-item-checkbox');
+        if (chk) {
+            chk.addEventListener('change', (e) => {
+                const itemKey = `${item.catKey}:::${item.val}`;
+                if (e.target.checked) {
+                    sepSelectedItems.add(itemKey);
+                } else {
+                    sepSelectedItems.delete(itemKey);
+                }
+                updateSepBulkDeleteUI(currentSepFullViewList);
+            });
+        }
 
         const btnInspect = tr.querySelector('.btn-inspect-split');
         if (btnInspect) {
@@ -4666,6 +4808,8 @@ function renderSepFullViewModalRows() {
 
         tbody.appendChild(tr);
     });
+
+    updateSepBulkDeleteUI(list);
 }
 
 // Helper to extract valid spreadsheet files from a ZIP Blob
@@ -4691,7 +4835,8 @@ async function extractSpreadsheetsFromZip(zipFile) {
                     const pathParts = relativePath.split('/');
                     let hasNumericFolder = false;
                     for (let i = 0; i < pathParts.length - 1; i++) {
-                        if (/^\d+/.test(pathParts[i])) {
+                        const seg = pathParts[i].trim();
+                        if (/^\d+/.test(seg) || /^MY[\s\-_]*\d+/i.test(seg)) {
                             hasNumericFolder = true;
                             break;
                         }
@@ -4730,6 +4875,8 @@ let renNextId = 1;
 let renActiveEditFile = null;
 let renFullviewCategory = 'all'; // 'all', 'p2', or 'g'
 let renSessionTimerInterval = null;
+let renSelectedFileIds = new Set();
+let currentRenFullViewList = [];
 
 // IndexedDB Session Storage Config (1 Hour Expiry)
 const REN_DB_NAME = 'MyntraRenameCacheDB_v2';
@@ -5110,6 +5257,43 @@ function setupRenameFile() {
     }
 
     // Full View Modal Handlers
+    const renSelectAll = document.getElementById('ren-select-all');
+    const btnRenDeleteSelected = document.getElementById('btn-ren-delete-selected');
+
+    if (renSelectAll) {
+        renSelectAll.addEventListener('change', (e) => {
+            const isChecked = e.target.checked;
+            if (isChecked) {
+                currentRenFullViewList.forEach(f => renSelectedFileIds.add(f.id));
+            } else {
+                currentRenFullViewList.forEach(f => renSelectedFileIds.delete(f.id));
+            }
+            renderFullViewModalRows();
+        });
+    }
+
+    if (btnRenDeleteSelected) {
+        btnRenDeleteSelected.addEventListener('click', () => {
+            const count = renSelectedFileIds.size;
+            if (count === 0) return;
+            showDeleteConfirmation({
+                title: `Delete ${count} Files?`,
+                message: `Are you sure you want to delete ${count} selected file${count === 1 ? '' : 's'} from the rename queue?`,
+                onConfirm: () => {
+                    renUploadedFiles = renUploadedFiles.filter(f => !renSelectedFileIds.has(f.id));
+                    renSelectedFileIds.clear();
+                    resetRenameButtonState();
+                    updateRenUploadBadges();
+                    calculateRenameResults();
+                    renderRenameState();
+                    renderFullViewModalRows();
+                    saveRenameSessionToStorage();
+                    showToast(`${count} file${count === 1 ? '' : 's'} removed.`, "info");
+                }
+            });
+        });
+    }
+
     if (btnCloseRenFullview) {
         btnCloseRenFullview.addEventListener('click', () => {
             if (renFullviewModal) renFullviewModal.classList.remove('show');
@@ -5133,6 +5317,7 @@ function setupRenameFile() {
 // Clear files belonging to a specific method (p2 or g)
 function clearRenMethodFiles(methodType) {
     renUploadedFiles = renUploadedFiles.filter(f => f.methodType !== methodType);
+    renSelectedFileIds.clear();
     if (renUploadedFiles.length === 0) {
         renIsProcessed = false;
     }
@@ -5686,7 +5871,7 @@ function extractCodeFromColG(colGVal, fileName, colAVal = "") {
     // 1. Check Column A (Company Name, e.g. "198-Gufrina (Admin)")
     if (colAVal) {
         const cleanA = String(colAVal).trim();
-        const matchA = cleanA.match(/^(\d{2,5})[-_\s]/);
+        const matchA = cleanA.match(/^(\d{1,5})[-_\s]/);
         if (matchA) {
             return matchA[1];
         }
@@ -5697,20 +5882,20 @@ function extractCodeFromColG(colGVal, fileName, colAVal = "") {
     if (cleanVal !== "") {
         const uppercaseVal = cleanVal.toUpperCase();
 
-        // Pattern A: Standard Myntra Invoice prefix: MY27S198-1578 -> extract "198" (S followed by 2-5 digits immediately before hyphen/underscore)
-        const myntraInvoiceMatch = cleanVal.match(/S(\d{2,5})[-_]/i);
+        // Pattern A: Standard Myntra Invoice prefix: MY27S198-1578 -> extract "198" (S followed by 1-5 digits immediately before hyphen/underscore)
+        const myntraInvoiceMatch = cleanVal.match(/S(\d{1,5})[-_]/i);
         if (myntraInvoiceMatch) {
             return myntraInvoiceMatch[1];
         }
 
         // Pattern B: Starts with CGJ1 (e.g. CGJ12627-295 or CGJ1-178-INV001 -> extract 2627 or 178)
-        const cgjMatch = cleanVal.match(/CGJ1?-?(\d{2,5})[-_]/i);
+        const cgjMatch = cleanVal.match(/CGJ1?-?(\d{1,5})[-_]/i);
         if (cgjMatch) {
             return cgjMatch[1];
         }
 
         // Pattern C: Digits immediately preceding hyphen followed by digits e.g. 198-1578 or MY27S198-1578 -> "198"
-        const preHyphenMatch = cleanVal.match(/(\d{2,5})-(?=\d+)/);
+        const preHyphenMatch = cleanVal.match(/(\d{1,5})-(?=\d+)/);
         if (preHyphenMatch) {
             return preHyphenMatch[1];
         }
@@ -5720,7 +5905,7 @@ function extractCodeFromColG(colGVal, fileName, colAVal = "") {
             const parts = cleanVal.split('-');
             const firstPart = parts[0].trim();
             if (firstPart !== "" && firstPart.toUpperCase() !== "CGJ1") {
-                const numPart = firstPart.match(/\d{2,5}/);
+                const numPart = firstPart.match(/\d{1,5}/);
                 if (numPart) {
                     return numPart[0];
                 }
@@ -5743,17 +5928,22 @@ function extractCodeFromColG(colGVal, fileName, colAVal = "") {
             }
         }
 
-        // Pattern F: Match numeric sequence of 2-5 digits
-        const numMatch = cleanVal.match(/\b\d{2,5}\b/);
+        // Pattern F: Match numeric sequence of 1-5 digits
+        const numMatch = cleanVal.match(/\b\d{1,5}\b/);
         if (numMatch) {
             return numMatch[0];
         }
     }
 
-    // 2. Fallback: Search filename starting digits
+    // 2. Fallback: Search filename starting digits or MY prefix
     if (fileName) {
-        let fName = normalizeMyPartyCode(String(fileName).trim());
-        const match = fName.match(/^\d{2,5}/);
+        const rawName = String(fileName).trim();
+        const myMatch = rawName.match(/^MY[\s\-_]*(\d+)(?=[\s\-_.\/]|$)/i);
+        if (myMatch) {
+            return `MY${myMatch[1]}`;
+        }
+        let fName = normalizeMyPartyCode(rawName);
+        const match = fName.match(/^\d{1,5}/);
         if (match) return match[0];
 
         if (typeof partyData !== "undefined" && partyData.length > 0) {
@@ -5902,6 +6092,7 @@ function removeRenFile(fileId) {
         title: "Delete File?",
         message: `Are you sure you want to delete "${fileName}"?`,
         onConfirm: () => {
+            renSelectedFileIds.delete(fileId);
             renUploadedFiles = renUploadedFiles.filter(f => f.id !== fileId);
             resetRenameButtonState();
             updateRenUploadBadges();
@@ -6064,10 +6255,42 @@ function openRenFullViewModal(category = 'all') {
     }
 
     if (renFullviewSearch) renFullviewSearch.value = "";
+    renSelectedFileIds.clear();
 
     renderFullViewModalRows();
     renFullviewModal.classList.add('show');
     renFullviewModal.classList.remove('hidden');
+}
+
+function updateRenBulkDeleteUI(sortedList = null) {
+    const btnDel = document.getElementById('btn-ren-delete-selected');
+    const countSpan = document.getElementById('ren-selected-count');
+    const selectAll = document.getElementById('ren-select-all');
+
+    const selCount = renSelectedFileIds.size;
+    if (countSpan) countSpan.textContent = selCount;
+
+    if (btnDel) {
+        if (selCount > 0) {
+            btnDel.classList.remove('hidden');
+            btnDel.style.display = 'inline-flex';
+        } else {
+            btnDel.classList.add('hidden');
+            btnDel.style.display = 'none';
+        }
+    }
+
+    if (selectAll && sortedList) {
+        if (sortedList.length > 0) {
+            const allSelected = sortedList.every(f => renSelectedFileIds.has(f.id));
+            const someSelected = sortedList.some(f => renSelectedFileIds.has(f.id));
+            selectAll.checked = allSelected;
+            selectAll.indeterminate = !allSelected && someSelected;
+        } else {
+            selectAll.checked = false;
+            selectAll.indeterminate = false;
+        }
+    }
 }
 
 function renderFullViewModalRows() {
@@ -6096,10 +6319,13 @@ function renderFullViewModalRows() {
         return a.id - b.id;
     });
 
+    currentRenFullViewList = sorted;
+
     if (countTag) countTag.textContent = `${sorted.length} files`;
 
     if (sorted.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 2rem;">No matching files found.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-muted); padding: 2rem;">No matching files found.</td></tr>`;
+        updateRenBulkDeleteUI(sorted);
         return;
     }
 
@@ -6117,6 +6343,9 @@ function renderFullViewModalRows() {
             : `<span class="badge" style="background: rgba(5, 150, 105, 0.15); color: #059669; border: 1px solid rgba(5, 150, 105, 0.3); font-weight: 700;">${file.renameCode}</span>`;
 
         tr.innerHTML = `
+            <td style="text-align: center;">
+                <input type="checkbox" class="ren-file-checkbox" data-id="${file.id}" ${renSelectedFileIds.has(file.id) ? 'checked' : ''} style="cursor: pointer; width: 15px; height: 15px; accent-color: var(--primary);">
+            </td>
             <td><strong>${idx + 1}</strong></td>
             <td>
                 <span class="file-name btn-inspect-file" style="cursor: pointer; font-weight: 600; color: var(--text-primary);" title="Click to view Excel rows">${file.name}</span>
@@ -6138,6 +6367,18 @@ function renderFullViewModalRows() {
             </td>
         `;
 
+        const chk = tr.querySelector('.ren-file-checkbox');
+        if (chk) {
+            chk.addEventListener('change', (e) => {
+                if (e.target.checked) {
+                    renSelectedFileIds.add(file.id);
+                } else {
+                    renSelectedFileIds.delete(file.id);
+                }
+                updateRenBulkDeleteUI(currentRenFullViewList);
+            });
+        }
+
         tr.querySelectorAll('.btn-inspect-file').forEach(el => el.addEventListener('click', () => openRenFileInspector(file)));
         const btnEdit = tr.querySelector('.btn-edit-prefix');
         if (btnEdit) btnEdit.addEventListener('click', () => openEditPrefixModal(file));
@@ -6149,6 +6390,8 @@ function renderFullViewModalRows() {
 
         tbody.appendChild(tr);
     });
+
+    updateRenBulkDeleteUI(sorted);
 }
 
 // Render Categorized Preview Cards (Order Files & Tax Files)
@@ -6532,6 +6775,8 @@ let mrgSingleFileName = "";
 let mrgNextId = 1;
 let mrgSessionTimerInterval = null;
 let mrgActiveEditGroupKey = null;
+let mrgSelectedGroupKeys = new Set();
+let currentMrgFullViewGroups = [];
 
 // IndexedDB Session Storage Config (1 Hour Expiry) for Merge Tab
 const MRG_DB_NAME = 'MyntraMergeCacheDB';
@@ -6730,10 +6975,51 @@ function setupMergeFile() {
         });
     }
 
+    const mrgSelectAll = document.getElementById('mrg-select-all');
+    const btnMrgDeleteSelected = document.getElementById('btn-mrg-delete-selected');
+
     if (btnMergeRun) btnMergeRun.addEventListener('click', runMergeProcess);
     if (btnMrgFullview) btnMrgFullview.addEventListener('click', openMrgFullViewModal);
     if (btnCloseMrgFullview) btnCloseMrgFullview.addEventListener('click', closeMrgFullViewModal);
     if (mrgFullviewSearch) mrgFullviewSearch.addEventListener('input', renderMrgFullViewModalRows);
+
+    if (mrgSelectAll) {
+        mrgSelectAll.addEventListener('change', (e) => {
+            const isChecked = e.target.checked;
+            if (isChecked) {
+                currentMrgFullViewGroups.forEach(k => mrgSelectedGroupKeys.add(k));
+            } else {
+                currentMrgFullViewGroups.forEach(k => mrgSelectedGroupKeys.delete(k));
+            }
+            renderMrgFullViewModalRows();
+        });
+    }
+
+    if (btnMrgDeleteSelected) {
+        btnMrgDeleteSelected.addEventListener('click', () => {
+            const count = mrgSelectedGroupKeys.size;
+            if (count === 0) return;
+            let totalFiles = 0;
+            mrgSelectedGroupKeys.forEach(k => {
+                totalFiles += (mrgGroupsMap.get(k) || []).length;
+            });
+            showDeleteConfirmation({
+                title: `Delete ${count} Groups?`,
+                message: `Are you sure you want to delete ${count} selected group${count === 1 ? '' : 's'} (${totalFiles} files) from the merge queue?`,
+                onConfirm: () => {
+                    mrgUploadedFiles = mrgUploadedFiles.filter(f => !mrgSelectedGroupKeys.has(f.groupKey));
+                    const deletedCount = mrgSelectedGroupKeys.size;
+                    mrgSelectedGroupKeys.clear();
+                    recalculateMergeGroups();
+                    resetMergeButtonState();
+                    renderMergePreview();
+                    renderMrgFullViewModalRows();
+                    saveMergeSessionToStorage();
+                    showToast(`${deletedCount} group${deletedCount === 1 ? '' : 's'} deleted from merge queue.`, "info");
+                }
+            });
+        });
+    }
 
     if (btnMrgMoveToFolder) btnMrgMoveToFolder.addEventListener('click', moveToFolderCreateFromMerge);
     if (btnMrgDownloadZip) btnMrgDownloadZip.addEventListener('click', runMergeProcess);
@@ -6973,6 +7259,7 @@ function renderMergePreview() {
 
 // Remove an entire group from merge
 function removeMergeGroup(groupKey) {
+    mrgSelectedGroupKeys.delete(groupKey);
     mrgUploadedFiles = mrgUploadedFiles.filter(f => f.groupKey !== groupKey);
     recalculateMergeGroups();
     resetMergeButtonState();
@@ -7013,6 +7300,7 @@ function openMrgFullViewModal() {
     const searchInput = document.getElementById('mrg-fullview-search');
     if (!modal) return;
     if (searchInput) searchInput.value = '';
+    mrgSelectedGroupKeys.clear();
     renderMrgFullViewModalRows();
     modal.classList.add('show');
     modal.classList.remove('hidden');
@@ -7023,6 +7311,37 @@ function closeMrgFullViewModal() {
     if (modal) {
         modal.classList.remove('show');
         modal.classList.add('hidden');
+    }
+}
+
+function updateMrgBulkDeleteUI(groups = null) {
+    const btnDel = document.getElementById('btn-mrg-delete-selected');
+    const countSpan = document.getElementById('mrg-selected-count');
+    const selectAll = document.getElementById('mrg-select-all');
+
+    const selCount = mrgSelectedGroupKeys.size;
+    if (countSpan) countSpan.textContent = selCount;
+
+    if (btnDel) {
+        if (selCount > 0) {
+            btnDel.classList.remove('hidden');
+            btnDel.style.display = 'inline-flex';
+        } else {
+            btnDel.classList.add('hidden');
+            btnDel.style.display = 'none';
+        }
+    }
+
+    if (selectAll && groups) {
+        if (groups.length > 0) {
+            const allSelected = groups.every(k => mrgSelectedGroupKeys.has(k));
+            const someSelected = groups.some(k => mrgSelectedGroupKeys.has(k));
+            selectAll.checked = allSelected;
+            selectAll.indeterminate = !allSelected && someSelected;
+        } else {
+            selectAll.checked = false;
+            selectAll.indeterminate = false;
+        }
     }
 }
 
@@ -7044,10 +7363,13 @@ function renderMrgFullViewModalRows() {
         });
     }
 
+    currentMrgFullViewGroups = groups;
+
     if (countTag) countTag.textContent = `${groups.length} groups (${mrgUploadedFiles.length} files)`;
 
     if (groups.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 2rem;">No matching groups found.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-muted); padding: 2rem;">No matching groups found.</td></tr>`;
+        updateMrgBulkDeleteUI(groups);
         return;
     }
 
@@ -7060,6 +7382,9 @@ function renderMrgFullViewModalRows() {
         tr.className = `row-color-${idx % 7}`;
 
         tr.innerHTML = `
+            <td style="text-align: center;">
+                <input type="checkbox" class="mrg-group-checkbox" data-key="${key}" ${mrgSelectedGroupKeys.has(key) ? 'checked' : ''} style="cursor: pointer; width: 15px; height: 15px; accent-color: var(--primary);">
+            </td>
             <td><strong>${idx + 1}</strong></td>
             <td><span class="badge badge-dt" style="font-weight: 700; font-size: 0.8rem;">${key}</span></td>
             <td>
@@ -7085,6 +7410,18 @@ function renderMrgFullViewModalRows() {
                 </div>
             </td>
         `;
+
+        const chk = tr.querySelector('.mrg-group-checkbox');
+        if (chk) {
+            chk.addEventListener('change', (e) => {
+                if (e.target.checked) {
+                    mrgSelectedGroupKeys.add(key);
+                } else {
+                    mrgSelectedGroupKeys.delete(key);
+                }
+                updateMrgBulkDeleteUI(currentMrgFullViewGroups);
+            });
+        }
 
         tr.querySelectorAll('.btn-inspect-one').forEach(elem => {
             elem.addEventListener('click', (e) => {
@@ -7119,6 +7456,8 @@ function renderMrgFullViewModalRows() {
 
         tbody.appendChild(tr);
     });
+
+    updateMrgBulkDeleteUI(groups);
 }
 
 // Edit Group Key Modal functions
@@ -10408,7 +10747,12 @@ function getFldPrefixGroups() {
             if (name.includes("-")) {
                 prefix = name.split("-")[0].trim();
             }
-            prefix = normalizeMyPartyCode(prefix);
+            if (/^MY[\s\-_]*\d+/i.test(prefix)) {
+                const m = prefix.match(/^MY[\s\-_]*(\d+)/i);
+                prefix = `MY${m[1]}`;
+            } else {
+                prefix = normalizeMyPartyCode(prefix);
+            }
             if (prefix === "") prefix = "Ungrouped";
             if (!groups.has(prefix)) {
                 groups.set(prefix, []);
