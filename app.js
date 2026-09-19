@@ -8000,6 +8000,299 @@ function renderErrorPreview() {
     });
 }
 
+function normalizePartyCode(val) {
+    if (!val) return "";
+    let str = String(val).trim().toUpperCase();
+    str = str.replace(/^(?:MY|AJ)[-_ ]?/i, '');
+    const prefixMatch = str.match(/^([A-Za-z0-9]+)[\-_ ]/);
+    if (prefixMatch) {
+        return prefixMatch[1].replace(/^(?:MY|AJ)[-_ ]?/i, '').trim();
+    }
+    return str.trim();
+}
+
+function getActiveMyntraPartyList() {
+    const list = [];
+    const seen = new Set();
+
+    // 1. From global partyData (synced from Google Sheets)
+    if (typeof partyData !== 'undefined' && Array.isArray(partyData) && partyData.length > 0) {
+        partyData.forEach(item => {
+            if (!item) return;
+            const code = String(item.code || '').trim();
+            const name = String(item.partyCode || item.name || code).trim();
+            if (code && !seen.has(code.toUpperCase())) {
+                seen.add(code.toUpperCase());
+                list.push({ code, name });
+            }
+        });
+    }
+
+    // 2. From cached localStorage
+    try {
+        const cached = JSON.parse(localStorage.getItem('cachedMyntraPartyData') || localStorage.getItem('partyData') || '[]');
+        if (Array.isArray(cached)) {
+            cached.forEach(item => {
+                if (!item) return;
+                const code = String(item.code || '').trim();
+                const name = String(item.partyCode || item.name || code).trim();
+                if (code && !seen.has(code.toUpperCase())) {
+                    seen.add(code.toUpperCase());
+                    list.push({ code, name });
+                }
+            });
+        }
+    } catch(e) {}
+
+    // 3. Fallback to defaultKnownParties
+    const defaultParties = [
+        { code: "101", name: "101-BHARVITA" },
+        { code: "127", name: "127-More & More" },
+        { code: "128", name: "128-BAGHADELLO" },
+        { code: "139", name: "139-INDO PRIMO" },
+        { code: "150", name: "150-ZOMBOM" },
+        { code: "178", name: "178-COLORBOOK" },
+        { code: "198", name: "198-GUFRINA" },
+        { code: "200", name: "200-FOCUS STYLE" },
+        { code: "206", name: "206-STYLE UNION" },
+        { code: "221", name: "221-SNOW WHITE" },
+        { code: "225", name: "225-GLAM STYLE" },
+        { code: "248", name: "248-URBAN CHIC" },
+        { code: "258", name: "258-FASHION VIBES" },
+        { code: "275", name: "275-CLASSIC TREND" },
+        { code: "311", name: "311-SILVER LINING" },
+        { code: "509", name: "509-VIVATRA" },
+        { code: "544", name: "544-HOUSE OF PRANSHI" },
+        { code: "MY2", name: "MY2" },
+        { code: "MY22", name: "MY22" }
+    ];
+    defaultParties.forEach(dp => {
+        if (!seen.has(dp.code.toUpperCase())) {
+            seen.add(dp.code.toUpperCase());
+            list.push(dp);
+        }
+    });
+
+    return list;
+}
+
+function extractRowPartyCodes(row, warehouseCol, invoiceCol) {
+    const foundCodes = new Set();
+    if (!row) return [];
+
+    // 1. Check Warehouse Name (Column D / Index 3)
+    const whVal = (warehouseCol !== undefined && row[warehouseCol] !== undefined)
+        ? String(row[warehouseCol]).trim()
+        : "";
+    if (whVal) {
+        const mDigits = whVal.match(/^(\d+)/);
+        if (mDigits) {
+            foundCodes.add(mDigits[1]);
+        }
+        const mPrefix = whVal.match(/^([A-Za-z0-9]+)[\-_ ]/);
+        if (mPrefix) {
+            foundCodes.add(normalizePartyCode(mPrefix[1]));
+            foundCodes.add(mPrefix[1].toUpperCase());
+        }
+        const normWh = normalizePartyCode(whVal);
+        if (normWh) foundCodes.add(normWh);
+    }
+
+    // 2. Check Invoice No (Column B / Index 1)
+    const invVal = (invoiceCol !== undefined && row[invoiceCol] !== undefined)
+        ? String(row[invoiceCol]).trim()
+        : "";
+    if (invVal) {
+        const strippedInv = invVal.replace(/^(?:MY\d{2}[A-Z]|AJ\d{2}[A-Z]|[A-Z]{2}\d{2}[A-Z]|MY[-_ ]?|AJ[-_ ]?)/i, '').trim();
+        if (strippedInv) {
+            const mDigits = strippedInv.match(/^(\d+)/);
+            if (mDigits) foundCodes.add(mDigits[1]);
+            const mPrefix = strippedInv.match(/^([A-Za-z0-9]+)[\-_/]/);
+            if (mPrefix) {
+                foundCodes.add(normalizePartyCode(mPrefix[1]));
+                foundCodes.add(mPrefix[1].toUpperCase());
+            }
+        }
+        const invPrefixMatch = invVal.match(/^([A-Za-z0-9]+)[\-_/]/);
+        if (invPrefixMatch) {
+            foundCodes.add(normalizePartyCode(invPrefixMatch[1]));
+            foundCodes.add(invPrefixMatch[1].toUpperCase());
+        }
+    }
+
+    // 3. Match against known active parties list
+    const activeParties = getActiveMyntraPartyList();
+    for (const p of activeParties) {
+        if (!p || !p.code) continue;
+        const pCodeNorm = normalizePartyCode(p.code);
+        const pCodeRaw = String(p.code).trim().toUpperCase();
+
+        if (whVal) {
+            const whUpper = whVal.toUpperCase();
+            if (whUpper.startsWith(pCodeRaw + "-") || whUpper.startsWith(pCodeRaw + " ") || whUpper === pCodeRaw ||
+                (pCodeNorm && (whUpper.startsWith(pCodeNorm + "-") || whUpper.startsWith(pCodeNorm + " ") || whUpper === pCodeNorm))) {
+                foundCodes.add(pCodeNorm);
+                foundCodes.add(pCodeRaw);
+            }
+            const pName = String(p.name || '').trim().toUpperCase();
+            const pNameClean = pName.replace(/^[A-Za-z0-9]+[\-_ ]\s*/, '').trim();
+            if (pNameClean.length >= 4) {
+                if (whUpper.includes(pNameClean) || pNameClean.includes(whUpper)) {
+                    foundCodes.add(pCodeNorm);
+                    foundCodes.add(pCodeRaw);
+                }
+            }
+        }
+        if (invVal) {
+            const invUpper = invVal.toUpperCase();
+            if (invUpper.startsWith(pCodeRaw + "-") || invUpper.startsWith(pCodeRaw + "/") ||
+                (pCodeNorm && (invUpper.startsWith(pCodeNorm + "-") || invUpper.startsWith(pCodeNorm + "/")))) {
+                foundCodes.add(pCodeNorm);
+                foundCodes.add(pCodeRaw);
+            }
+        }
+    }
+
+    foundCodes.delete("");
+    return Array.from(foundCodes);
+}
+
+// Party Modal State & Handlers
+let currentMeTargetRow = null;
+let currentMeSelectedCodes = new Set();
+
+function updateMePartyCountBadge() {
+    const badge = document.getElementById('mePartySelectedCountBadge');
+    if (!badge) return;
+    const parties = getActiveMyntraPartyList();
+    if (currentMeSelectedCodes.size === 0 || currentMeSelectedCodes.size === parties.length) {
+        badge.textContent = 'All Parties';
+        badge.style.background = 'rgba(123, 44, 191, 0.1)';
+        badge.style.color = '#7b2cbf';
+    } else {
+        badge.textContent = `${currentMeSelectedCodes.size} of ${parties.length} Selected`;
+        badge.style.background = '#7b2cbf';
+        badge.style.color = '#ffffff';
+    }
+}
+
+function renderMePartyCheckboxList(filterText = "") {
+    const container = document.getElementById('mePartyCheckboxesContainer');
+    if (!container) return;
+    const parties = getActiveMyntraPartyList();
+    const query = filterText.toLowerCase().trim();
+
+    // Sort naturally by code
+    const sorted = [...parties].sort((a, b) => {
+        const aCode = String(a.code || '');
+        const bCode = String(b.code || '');
+        return (isNaN(aCode) || isNaN(bCode)) 
+            ? aCode.localeCompare(bCode, undefined, { numeric: true }) 
+            : Number(aCode) - Number(bCode);
+    });
+
+    const filtered = query === "" ? sorted : sorted.filter(p => {
+        const c = String(p.code || '').toLowerCase();
+        const n = String(p.name || '').toLowerCase();
+        return c.includes(query) || n.includes(query);
+    });
+
+    if (filtered.length === 0) {
+        container.innerHTML = `
+            <div style="text-align: center; color: var(--text-muted); font-size: 0.78rem; padding: 2rem 1rem;">
+                No parties found matching "${filterText}".
+            </div>
+        `;
+        updateMePartyCountBadge();
+        return;
+    }
+
+    container.innerHTML = filtered.map(p => {
+        const pCode = String(p.code || '').trim();
+        const isChecked = currentMeSelectedCodes.has(pCode);
+        return `
+            <label class="me-party-checkbox-item ${isChecked ? 'is-selected' : ''}" data-code="${pCode}" tabindex="0">
+                <input type="checkbox" class="me-party-chk" value="${pCode}" ${isChecked ? 'checked' : ''}>
+                <span class="me-party-code-badge">${pCode}</span>
+                <span class="me-party-name-text" title="${p.name || pCode}">${p.name || pCode}</span>
+            </label>
+        `;
+    }).join('');
+
+    // Attach change listeners to checkboxes
+    container.querySelectorAll('.me-party-chk').forEach(chk => {
+        chk.addEventListener('change', (e) => {
+            const val = e.target.value;
+            const parentLabel = chk.closest('.me-party-checkbox-item');
+            if (e.target.checked) {
+                currentMeSelectedCodes.add(val);
+                if (parentLabel) parentLabel.classList.add('is-selected');
+            } else {
+                currentMeSelectedCodes.delete(val);
+                if (parentLabel) parentLabel.classList.remove('is-selected');
+            }
+            updateMePartyCountBadge();
+        });
+    });
+
+    // Keyboard navigation on party checkbox items
+    const searchInput = document.getElementById('mePartySearchInput');
+    container.querySelectorAll('.me-party-checkbox-item').forEach(item => {
+        item.addEventListener('keydown', (e) => {
+            if (e.key === ' ' || e.key === 'Enter') {
+                e.preventDefault();
+                const chk = item.querySelector('.me-party-chk');
+                if (chk) {
+                    chk.checked = !chk.checked;
+                    chk.dispatchEvent(new Event('change'));
+                    item.classList.add('me-party-just-selected');
+                    setTimeout(() => item.classList.remove('me-party-just-selected'), 400);
+                }
+            } else if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                const next = item.nextElementSibling;
+                if (next && next.classList.contains('me-party-checkbox-item')) {
+                    next.focus();
+                }
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                const prev = item.previousElementSibling;
+                if (prev && prev.classList.contains('me-party-checkbox-item')) {
+                    prev.focus();
+                } else if (searchInput) {
+                    searchInput.focus();
+                }
+            }
+        });
+    });
+
+    updateMePartyCountBadge();
+}
+
+function openMePartyModal(rowElement) {
+    const modal = document.getElementById('me-party-select-modal');
+    if (!modal) return;
+    currentMeTargetRow = rowElement;
+    const existingCodes = Array.isArray(rowElement._selectedPartyCodes) ? rowElement._selectedPartyCodes : [];
+    currentMeSelectedCodes = new Set(existingCodes);
+
+    const searchInput = document.getElementById('mePartySearchInput');
+    if (searchInput) searchInput.value = '';
+    renderMePartyCheckboxList();
+
+    modal.style.display = 'flex';
+    if (searchInput) {
+        setTimeout(() => searchInput.focus(), 100);
+    }
+}
+
+function closeMePartyModal() {
+    const modal = document.getElementById('me-party-select-modal');
+    if (!modal) return;
+    modal.style.display = 'none';
+    currentMeTargetRow = null;
+}
+
 function getMyntraActiveDateRanges() {
     const ranges = [];
     const rows = document.querySelectorAll('#err-date-ranges-container .err-date-range-row');
@@ -8008,12 +8301,35 @@ function getMyntraActiveDateRanges() {
         const toInp = r.querySelector('.err-to-date');
         const fVal = fromInp ? fromInp.value : '';
         const tVal = toInp ? toInp.value : '';
-        if (fVal || tVal) {
-            const f = fVal ? new Date(fVal) : null;
-            const t = tVal ? new Date(tVal) : null;
-            if (f) f.setHours(0, 0, 0, 0);
-            if (t) t.setHours(23, 59, 59, 999);
-            ranges.push({ from: f, to: t, fromStr: fVal, toStr: tVal });
+        const selectedPartyCodes = Array.isArray(r._selectedPartyCodes) ? r._selectedPartyCodes : [];
+        if (fVal || tVal || selectedPartyCodes.length > 0) {
+            let f = null;
+            if (fVal) {
+                const parts = fVal.split('-');
+                if (parts.length === 3) {
+                    f = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10), 0, 0, 0, 0);
+                } else {
+                    f = new Date(fVal);
+                    f.setHours(0, 0, 0, 0);
+                }
+            }
+            let t = null;
+            if (tVal) {
+                const parts = tVal.split('-');
+                if (parts.length === 3) {
+                    t = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10), 23, 59, 59, 999);
+                } else {
+                    t = new Date(tVal);
+                    t.setHours(23, 59, 59, 999);
+                }
+            }
+            ranges.push({
+                from: f,
+                to: t,
+                fromStr: fVal,
+                toStr: tVal,
+                selectedPartyCodes: selectedPartyCodes
+            });
         }
     });
     return ranges;
@@ -8022,6 +8338,151 @@ function getMyntraActiveDateRanges() {
 document.addEventListener('DOMContentLoaded', () => {
     const btnErrAddRange = document.getElementById('btn-err-add-range');
     const errDateRangesContainer = document.getElementById('err-date-ranges-container');
+
+    // Modal elements
+    const btnCloseMePartyModal = document.getElementById('btn-close-me-party-modal');
+    const mePartyCancelBtn = document.getElementById('mePartyCancelBtn');
+    const mePartyApplyBtn = document.getElementById('mePartyApplyBtn');
+    const mePartySearchInput = document.getElementById('mePartySearchInput');
+    const mePartySelectAllBtn = document.getElementById('mePartySelectAllBtn');
+    const mePartyDeselectAllBtn = document.getElementById('mePartyDeselectAllBtn');
+    const mePartyCheckboxesContainer = document.getElementById('mePartyCheckboxesContainer');
+
+    if (btnCloseMePartyModal) btnCloseMePartyModal.addEventListener('click', closeMePartyModal);
+    if (mePartyCancelBtn) mePartyCancelBtn.addEventListener('click', closeMePartyModal);
+
+    if (mePartySearchInput) {
+        mePartySearchInput.addEventListener('input', (e) => {
+            renderMePartyCheckboxList(e.target.value);
+        });
+
+        // Press Enter to select matching party directly or Apply if empty
+        mePartySearchInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                const query = mePartySearchInput.value.trim().toLowerCase();
+
+                if (!query) {
+                    if (mePartyApplyBtn) mePartyApplyBtn.click();
+                    return;
+                }
+
+                if (!mePartyCheckboxesContainer) return;
+                const visibleItems = Array.from(mePartyCheckboxesContainer.querySelectorAll('.me-party-checkbox-item'));
+                if (visibleItems.length === 0) return;
+
+                // Priority 1: Exact match on party code (e.g. query "127" === code "127")
+                let matchedItem = visibleItems.find(lbl => {
+                    const code = (lbl.getAttribute('data-code') || '').trim().toLowerCase();
+                    return code === query;
+                });
+
+                // Priority 2: Code starts with query (e.g. query "12" matches code "127")
+                if (!matchedItem) {
+                    matchedItem = visibleItems.find(lbl => {
+                        const code = (lbl.getAttribute('data-code') || '').trim().toLowerCase();
+                        return code.startsWith(query);
+                    });
+                }
+
+                // Priority 3: First visible item in filtered list
+                if (!matchedItem) {
+                    matchedItem = visibleItems[0];
+                }
+
+                if (matchedItem) {
+                    const chk = matchedItem.querySelector('.me-party-chk');
+                    if (chk) {
+                        const code = chk.value;
+                        if (!currentMeSelectedCodes.has(code)) {
+                            currentMeSelectedCodes.add(code);
+                            chk.checked = true;
+                            matchedItem.classList.add('is-selected');
+                        } else {
+                            currentMeSelectedCodes.delete(code);
+                            chk.checked = false;
+                            matchedItem.classList.remove('is-selected');
+                        }
+
+                        matchedItem.classList.add('me-party-just-selected');
+                        setTimeout(() => matchedItem.classList.remove('me-party-just-selected'), 500);
+
+                        matchedItem.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+                        updateMePartyCountBadge();
+                        mePartySearchInput.select();
+                    }
+                }
+            } else if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                if (mePartyCheckboxesContainer) {
+                    const firstItem = mePartyCheckboxesContainer.querySelector('.me-party-checkbox-item');
+                    if (firstItem) firstItem.focus();
+                }
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                if (mePartySearchInput.value) {
+                    mePartySearchInput.value = '';
+                    renderMePartyCheckboxList();
+                } else {
+                    closeMePartyModal();
+                }
+            }
+        });
+    }
+
+    if (mePartySelectAllBtn) {
+        mePartySelectAllBtn.addEventListener('click', () => {
+            const parties = getActiveMyntraPartyList();
+            parties.forEach(p => {
+                if (p && p.code) currentMeSelectedCodes.add(String(p.code).trim());
+            });
+            renderMePartyCheckboxList(mePartySearchInput ? mePartySearchInput.value : '');
+        });
+    }
+
+    if (mePartyDeselectAllBtn) {
+        mePartyDeselectAllBtn.addEventListener('click', () => {
+            currentMeSelectedCodes.clear();
+            renderMePartyCheckboxList(mePartySearchInput ? mePartySearchInput.value : '');
+        });
+    }
+
+    if (mePartyApplyBtn) {
+        mePartyApplyBtn.addEventListener('click', () => {
+            if (currentMeTargetRow) {
+                const parties = getActiveMyntraPartyList();
+                const btnLabel = currentMeTargetRow.querySelector('.me-party-btn-label');
+                const btn = currentMeTargetRow.querySelector('.me-select-parties-btn');
+
+                if (currentMeSelectedCodes.size === 0 || currentMeSelectedCodes.size === parties.length) {
+                    currentMeTargetRow._selectedPartyCodes = [];
+                    if (btnLabel) btnLabel.innerText = 'All Parties';
+                    if (btn) {
+                        btn.classList.remove('has-parties');
+                        btn.title = 'Applies to all parties';
+                    }
+                } else {
+                    currentMeTargetRow._selectedPartyCodes = Array.from(currentMeSelectedCodes);
+                    if (btnLabel) btnLabel.innerText = `${currentMeSelectedCodes.size} Parties Selected`;
+                    if (btn) {
+                        btn.classList.add('has-parties');
+                        btn.title = `Applied to: ${currentMeTargetRow._selectedPartyCodes.join(', ')}`;
+                    }
+                }
+            }
+            closeMePartyModal();
+        });
+    }
+
+    // Attach listener to initial row if present in HTML
+    const initialPartyBtn = document.querySelector('#err-date-ranges-container .err-date-range-row .me-select-parties-btn');
+    if (initialPartyBtn) {
+        const initialRow = initialPartyBtn.closest('.err-date-range-row');
+        if (initialRow) {
+            initialRow._selectedPartyCodes = [];
+            initialPartyBtn.addEventListener('click', () => openMePartyModal(initialRow));
+        }
+    }
 
     function updateMyntraRangeTitles() {
         if (!errDateRangesContainer) return;
@@ -8044,6 +8505,7 @@ document.addEventListener('DOMContentLoaded', () => {
             row.style.borderRadius = '8px';
             row.style.padding = '6px 8px';
             row.style.marginTop = '0.3rem';
+            row._selectedPartyCodes = [];
             row.innerHTML = `
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
                     <span class="range-title" style="font-size: 0.7rem; font-weight: 600; color: var(--text-secondary);">Sale Range #${rangeIndex}</span>
@@ -8052,17 +8514,28 @@ document.addEventListener('DOMContentLoaded', () => {
                         Remove
                     </button>
                 </div>
-                <div style="display: flex; gap: 6px;">
-                    <div class="select-group" style="flex: 1; min-width: 0;">
+                <div style="display: flex; gap: 6px; align-items: flex-end; flex-wrap: wrap;">
+                    <div class="select-group" style="flex: 1; min-width: 110px;">
                         <label style="display: block; font-size: 0.68rem; color: var(--text-secondary); margin-bottom: 2px;">From Date</label>
                         <input type="date" class="select-field err-from-date" style="width: 100%; box-sizing: border-box; font-size: 0.78rem; padding: 4px; height: 32px;">
                     </div>
-                    <div class="select-group" style="flex: 1; min-width: 0;">
+                    <div class="select-group" style="flex: 1; min-width: 110px;">
                         <label style="display: block; font-size: 0.68rem; color: var(--text-secondary); margin-bottom: 2px;">To Date</label>
                         <input type="date" class="select-field err-to-date" style="width: 100%; box-sizing: border-box; font-size: 0.78rem; padding: 4px; height: 32px;">
                     </div>
+                    <div class="select-group" style="flex: 1.2; min-width: 130px;">
+                        <label style="display: block; font-size: 0.68rem; color: var(--text-secondary); margin-bottom: 2px;">Target Parties</label>
+                        <button type="button" class="btn btn-secondary me-select-parties-btn" style="height: 32px; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 0.76rem; font-weight: 600; border-radius: 6px; width: 100%; padding: 0 0.5rem; border: 1px solid var(--panel-border, #cbd5e1); background: #ffffff; cursor: pointer;" title="Select specific parties for this date range">
+                            <i class="fa-solid fa-users text-purple" style="color: #7b2cbf;"></i>
+                            <span class="me-party-btn-label">All Parties</span>
+                        </button>
+                    </div>
                 </div>
             `;
+            const partyBtn = row.querySelector('.me-select-parties-btn');
+            if (partyBtn) {
+                partyBtn.addEventListener('click', () => openMePartyModal(row));
+            }
             row.querySelector('.remove-err-range-btn').addEventListener('click', () => {
                 row.remove();
                 updateMyntraRangeTitles();
@@ -8096,8 +8569,16 @@ async function runErrorCheckProcess() {
     try {
         // Retrieve date filters from UI
         const activeDateRanges = getMyntraActiveDateRanges();
+        const rangeDeletedCounts = activeDateRanges.map(() => 0);
+        const rangeDeletedWarehouses = activeDateRanges.map(() => new Set());
         if (activeDateRanges.length > 0) {
-            const rangeLogs = activeDateRanges.map(r => `[${r.fromStr || 'Start'} to ${r.toStr || 'End'}]`).join(', ');
+            const rangeLogs = activeDateRanges.map((r, i) => {
+                const dateStr = `[${r.fromStr || 'Start'} to ${r.toStr || 'End'}]`;
+                const partyStr = (r.selectedPartyCodes && r.selectedPartyCodes.length > 0)
+                    ? ` (Target: ${r.selectedPartyCodes.join(', ')})`
+                    : ` (All Parties)`;
+                return `#${i + 1} ${dateStr}${partyStr}`;
+            }).join(' | ');
             addLog(`Active sale exclusion ranges (${activeDateRanges.length}): ${rangeLogs}`, "info");
         }
 
@@ -8182,28 +8663,79 @@ async function runErrorCheckProcess() {
             }
             row[22] = cellValC;
 
-            // Multi-Date Range filter check (Exclude if matching ANY active range)
+            // Multi-Date Range filter check with Party Targeting
+            let shouldDeleteByDate = false;
             if (activeDateRanges.length > 0) {
-                const cellDate = parseCellAsDate(cellValC);
-                if (cellDate) {
-                    const cellTime = cellDate.getTime();
-                    let inRange = false;
-                    for (const rng of activeDateRanges) {
-                        const satisfiesFrom = rng.from ? cellTime >= rng.from.getTime() : true;
-                        const satisfiesTo = rng.to ? cellTime <= rng.to.getTime() : true;
-                        if (satisfiesFrom && satisfiesTo) {
-                            inRange = true;
-                            break;
+                const parsedOrderDate = parseCellAsDate(cellValC);
+                const parsedInvoiceDate = parseCellAsDate(row[2]); // Details Column C (Invoice Date)
+                const rowPartyCodes = extractRowPartyCodes(row, 3, 1); // Col D (Warehouse Name), Col B (Invoice No)
+
+                for (let rngIdx = 0; rngIdx < activeDateRanges.length; rngIdx++) {
+                    const rng = activeDateRanges[rngIdx];
+
+                    // If specific parties are selected for this range, only apply if this row belongs to one of those parties
+                    if (rng.selectedPartyCodes && rng.selectedPartyCodes.length > 0) {
+                        const partyMatched = rng.selectedPartyCodes.some(selCode => {
+                            const normSel = normalizePartyCode(selCode);
+                            const selUpper = String(selCode).trim().toUpperCase();
+                            return rowPartyCodes.some(rpc => {
+                                const normRpc = normalizePartyCode(rpc);
+                                const rpcUpper = String(rpc).trim().toUpperCase();
+                                return normRpc === normSel || rpcUpper === selUpper || normRpc === selUpper || rpcUpper === normSel;
+                            });
+                        });
+                        if (!partyMatched) {
+                            continue; // Skip this date range for this row (party not targeted)
                         }
                     }
-                    if (inRange) {
-                        dateFilteredCount++;
-                        continue; // delete/skip row
+
+                    // If party matched and no date restrictions specified on range, delete row for this target party
+                    if (!rng.from && !rng.to) {
+                        shouldDeleteByDate = true;
+                        rangeDeletedCounts[rngIdx]++;
+                        const whVal = String(row[3] || 'Unknown').trim();
+                        rangeDeletedWarehouses[rngIdx].add(whVal);
+                        break;
+                    }
+
+                    // Check if a date object falls within [rng.from, rng.to] inclusive
+                    const isDateInRange = (dObj) => {
+                        if (!dObj) return false;
+                        const t = dObj.getTime();
+                        const satisfiesFrom = rng.from ? t >= rng.from.getTime() : true;
+                        const satisfiesTo = rng.to ? t <= rng.to.getTime() : true;
+                        return satisfiesFrom && satisfiesTo;
+                    };
+
+                    // Exclude if EITHER looked-up Order Date OR Details Invoice Date falls inside range
+                    if (isDateInRange(parsedOrderDate) || isDateInRange(parsedInvoiceDate)) {
+                        shouldDeleteByDate = true;
+                        rangeDeletedCounts[rngIdx]++;
+                        const whVal = String(row[3] || 'Unknown').trim();
+                        rangeDeletedWarehouses[rngIdx].add(whVal);
+                        break;
                     }
                 }
             }
 
+            if (shouldDeleteByDate) {
+                dateFilteredCount++;
+                continue; // delete/skip row
+            }
+
             survivingRows.push(row);
+        }
+
+        if (activeDateRanges.length > 0) {
+            addLog(`Date range filter removed total ${dateFilteredCount} rows:`, "info");
+            activeDateRanges.forEach((rng, idx) => {
+                const partiesLabel = (rng.selectedPartyCodes && rng.selectedPartyCodes.length > 0)
+                    ? `Parties [${rng.selectedPartyCodes.join(', ')}]`
+                    : 'All Parties';
+                const whList = Array.from(rangeDeletedWarehouses[idx]);
+                const whSummary = whList.length > 0 ? ` (Affected Warehouses: ${whList.slice(0, 5).join(', ')}${whList.length > 5 ? '...' : ''})` : '';
+                addLog(`  • Range #${idx + 1} [${rng.fromStr || 'Start'} to ${rng.toStr || 'End'}] (${partiesLabel}): ${rangeDeletedCounts[idx]} rows deleted${whSummary}`, "warning");
+            });
         }
 
         updateErrProgress(70, "Grouping error rows by Warehouse Name (Column D)...");
@@ -8534,7 +9066,7 @@ function parseDisputeAmount(val) {
 // Parse excel cell or string value to Date object robustly
 function parseCellAsDate(val) {
     if (val === undefined || val === null || val === "") return null;
-    if (val instanceof Date) return val;
+    if (val instanceof Date) return isNaN(val.getTime()) ? null : val;
     
     // Excel Serial Number
     if (!isNaN(Number(val)) && Number(val) > 20000) {
@@ -8543,6 +9075,17 @@ function parseCellAsDate(val) {
     
     const str = String(val).trim();
     if (!str) return null;
+
+    // Alpha month check (e.g. "18 Sep 2026" or "18-Sep-2026")
+    const alphaMatch = str.match(/^(\d{1,2})[\s\-\/]([A-Za-z]{3,})[\s\-\/](\d{4})/);
+    if (alphaMatch) {
+        const months = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
+        const mKey = alphaMatch[2].substring(0, 3).toLowerCase();
+        if (months[mKey] !== undefined) {
+            const d = new Date(parseInt(alphaMatch[3], 10), months[mKey], parseInt(alphaMatch[1], 10));
+            if (!isNaN(d.getTime())) return d;
+        }
+    }
 
     // DD-MM-YYYY or YYYY-MM-DD Check
     const parts = str.split(' ')[0].split(/[-/]/);

@@ -1954,6 +1954,70 @@ input:checked + .slider:before {
 .text-teal { color: #0d9488 !important; }
 .text-success { color: #10b981 !important; }
 
+/* Myntra Error - Date Range Party Selector */
+.me-select-parties-btn {
+    transition: all 0.2s ease;
+}
+.me-select-parties-btn:hover {
+    background: #f8fafc !important;
+    border-color: #7b2cbf !important;
+}
+.me-select-parties-btn.has-parties {
+    background: rgba(123, 44, 191, 0.08) !important;
+    border-color: #7b2cbf !important;
+    color: #7b2cbf !important;
+    font-weight: 700 !important;
+}
 
-
-
+.me-party-checkbox-item {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.45rem 0.65rem;
+    border-radius: 8px;
+    border: 1px solid #f1f5f9;
+    background: white;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    user-select: none;
+    outline: none;
+}
+.me-party-checkbox-item:hover,
+.me-party-checkbox-item:focus {
+    background: #faf5ff;
+    border-color: #c084fc;
+}
+.me-party-checkbox-item.is-selected {
+    background: rgba(123, 44, 191, 0.06);
+    border-color: #c084fc;
+}
+.me-party-checkbox-item.me-party-just-selected {
+    background: #ede9fe !important;
+    border-color: #7b2cbf !important;
+    box-shadow: 0 0 0 3px rgba(123, 44, 191, 0.3) !important;
+    transform: scale(1.015);
+}
+.me-party-checkbox-item input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+    accent-color: #7b2cbf;
+}
+.me-party-code-badge {
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 0.15rem 0.45rem;
+    border-radius: 4px;
+    background: #ede9fe;
+    color: #6d28d9;
+    border: 1px solid #d8b4fe;
+    flex-shrink: 0;
+}
+.me-party-name-text {
+    font-size: 0.78rem;
+    color: var(--text-primary);
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
